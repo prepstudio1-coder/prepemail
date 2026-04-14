@@ -28,21 +28,38 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked request from origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range', 'Content-Type'],
+  maxAge: 86400 // 24 hours preflight cache
 };
 
-// Middleware
+// Middleware - Apply CORS before other middleware
 app.use(cors(corsOptions));
-app.use(express.json());
 
-// Explicit preflight handler for all routes
-app.options('*', cors(corsOptions));
+// Additional CORS headers middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.get('Origin') || 'https://prepapp.name.ng');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.header('Access-Control-Expose-Headers', 'Content-Range, X-Content-Range, Content-Type');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    console.log(`Preflight request from ${req.get('Origin')} to ${req.path}`);
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
+
+app.use(express.json());
 
 // Request logging middleware
 app.use((req, res, next) => {
