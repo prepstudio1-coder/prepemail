@@ -16,10 +16,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Email Service Configuration (Your Render microservice)
-const EMAIL_SERVICE_URL = process.env.EMAIL_SERVICE_URL || 'https://prepemail.onrender.com/api/send-welcome-email';
-
-// Brevo API Configuration (Legacy - keeping for backward compatibility)
+// Email Service Configuration (Your Brevo account)
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_API_URL = 'https://api.brevo.com/v3';
 
@@ -191,38 +188,147 @@ function generateWelcomeEmailHTML(fullName, accountType) {
 }
 
 /**
- * Send payment confirmation email via Render email service
- * Uses your existing microservice endpoint
+ * Send payment confirmation email via Brevo
+ * Same service used for signup welcome emails
  */
 async function sendPaymentConfirmationEmail(email, fullName, plan, amount, transactionId) {
   try {
-    const response = await fetchFn(EMAIL_SERVICE_URL, {
+    if (!BREVO_API_KEY) {
+      console.warn('BREVO_API_KEY not configured - payment email skipped');
+      return false;
+    }
+
+    // Send email via Brevo
+    const response = await fetchFn(`${BREVO_API_URL}/smtp/email`, {
       method: 'POST',
       headers: {
+        'api-key': BREVO_API_KEY,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        email: email,
-        fullName: fullName,
-        accountType: `payment_${plan}`  // Mark this as payment email type
+        to: [
+          {
+            email: email,
+            name: fullName
+          }
+        ],
+        sender: {
+          name: 'PREP - Cinematic Pre-production',
+          email: 'noreply@prepapp.name.ng'
+        },
+        subject: `🎉 Welcome to PREP Pro, ${fullName}!`,
+        htmlContent: generatePaymentConfirmationEmail(fullName, plan, amount),
+        replyTo: {
+          email: 'hello@prepapp.name.ng',
+          name: 'PREP Support'
+        }
       })
     });
 
-    const result = await response.json();
-
-    if (result.success) {
-      console.log('Payment confirmation email sent:', result.messageId);
-      return true;
-    } else {
-      console.error('Failed to send payment email:', result.error);
-      // Don't fail payment if email fails - just log it
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('Brevo payment email send failed:', error);
       return false;
     }
+
+    const result = await response.json();
+    console.log('Payment confirmation email sent:', result.messageId);
+    return true;
   } catch (error) {
     console.error('Error sending payment confirmation email:', error);
-    // Don't fail the payment if email service is down
+    // Don't fail payment if email fails - just log it
     return false;
   }
+}
+
+/**
+ * Generate HTML content for payment confirmation email
+ */
+function generatePaymentConfirmationEmail(fullName, plan, amount) {
+  const planFeatures = {
+    pro: [
+      '<li>✅ Unlimited active projects</li>',
+      '<li>✅ Advanced AI scene analysis</li>',
+      '<li>✅ 500MB+ upload storage</li>',
+      '<li>✅ Team collaboration tools</li>',
+      '<li>✅ Priority support</li>'
+    ],
+    studio: [
+      '<li>✅ Unlimited everything</li>',
+      '<li>✅ Custom workflows</li>',
+      '<li>✅ Dedicated account manager</li>',
+      '<li>✅ SSO and API access</li>'
+    ]
+  };
+
+  const features = (planFeatures[plan] || planFeatures.pro).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Payment Confirmed - PREP</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { text-align: center; padding: 20px 0; margin-bottom: 30px; }
+            .header h1 { color: #28a745; margin: 0; font-size: 28px; }
+            .content { padding: 20px 0; }
+            .content h2 { color: #333; font-size: 20px; }
+            .content p { margin: 10px 0; }
+            .plan-badge { display: inline-block; background: #ff6500; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 10px 0; }
+            .features { margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #28a745; }
+            .features li { margin: 8px 0; }
+            .cta-button { display: inline-block; margin: 20px 0; padding: 12px 30px; background: #ff6500; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+            .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #666; }
+            .amount { font-size: 24px; color: #28a745; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>✅ Payment Successful!</h1>
+            </div>
+            
+            <div class="content">
+                <p>Hi <strong>${fullName}</strong>,</p>
+                
+                <p>Thank you for upgrading to PREP Pro! Your payment has been received and processed successfully.</p>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <div class="amount">$${amount}/month</div>
+                    <div class="plan-badge">${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan</div>
+                </div>
+                
+                <h2>What's Included</h2>
+                <div class="features">
+                    <ul style="margin: 0; padding-left: 20px;">
+                        ${features}
+                    </ul>
+                </div>
+                
+                <p>Your account is now fully upgraded. You have immediate access to all Pro features!</p>
+                
+                <a href="https://prepapp.name.ng/dashboard.html" class="cta-button">Go to Dashboard</a>
+                
+                <h2>Next Steps</h2>
+                <p>Start creating unlimited projects and leverage advanced AI features to streamline your pre-production workflow.</p>
+                
+                <p>Have questions? Check out our <a href="https://prepapp.name.ng/guide.html">User Guide</a> or <a href="https://prepapp.name.ng/contactsupport.html">Contact Support</a>.</p>
+                
+                <p>Happy creating!<br>The PREP Team</p>
+            </div>
+            
+            <div class="footer">
+                <p>&copy; 2026 PREP - Cinematic Pre-production Operating System</p>
+                <p><a href="https://prepapp.name.ng">Visit Website</a> | <a href="https://prepapp.name.ng/contactsupport.html">Support</a></p>
+            </div>
+        </div>
+    </body>
+    </html>
+  `;
 }
 
 /**
