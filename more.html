@@ -1,0 +1,147 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>More</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+  <link rel="icon" href="/assets/logo.png" type="image/png">
+<link rel="stylesheet" href="more.css"> 
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <script>
+        if (localStorage.getItem("darkMode") === "on") document.body.classList.add("dark");
+    </script>
+
+    <header>
+        <div class="header-container">
+            <h1 class="header-title">Menu</h1>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <div class="options-container">
+            <a href="contactsupport.html" class="more-option-item">
+                <div class="option-content">
+                    <i class="fa-solid fa-headset icon"></i>
+                    <span>Customer Support</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+
+            <a href="settings.html" class="more-option-item">
+                <div class="option-content">
+                    <i class="fa-solid fa-cog icon"></i>
+                    <span>Settings</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+
+            <a href="pricing.html" class="more-option-item" style="background: rgba(255, 101, 0, 0.1); border: 1px solid rgba(255, 101, 0, 0.3);">
+                <div class="option-content">
+                    <i class="fa-solid fa-crown icon" style="color: #ff6500;"></i>
+                    <span style="color: #ff6500; font-weight: 600;">Upgrade to Pro</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+
+            <a href="profile.html" class="more-option-item">
+                <div class="option-content">
+                    <i class="fa-solid fa-user-circle icon"></i>
+                    <span>Edit Profile</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+            
+            <a href="feedback.html" class="more-option-item">
+                <div class="option-content">
+                    <i class="fa-solid fa-comment-dots icon"></i>
+                    <span>Send Feedback</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+            
+            <a href="about.html" class="more-option-item">
+                <div class="option-content">
+                    <i class="fa-solid fa-info-circle icon"></i>
+                    <span>About PREP</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+
+            <a href="guide.html" class="more-option-item">
+                <div class="option-content">
+                    <i class="fa-solid fa-book icon"></i>
+                    <span>User Guide</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+
+            <button id="openShortcutsButton" class="more-option-item" type="button">
+                <div class="option-content">
+                    <span>Keyboard Shortcuts</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </button>
+
+            <button id="startTourButton" class="more-option-item" type="button">
+                <div class="option-content">
+                    <i class="fa-solid fa-graduation-cap icon"></i>
+                    <span>Start Tour</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </button>
+
+            <a href="terms.html" class="more-option-item">
+                <div class="option-content">
+                    <i class="fa-solid fa-file-contract icon"></i>
+                    <span>Terms & Conditions</span>
+                </div>
+                <i class="fa-solid fa-chevron-right chevron"></i>
+            </a>
+        </div>
+
+        <div class="version-info">Version 1.2.0</div>
+
+        <div id="shortcutsModal" class="modal-overlay">
+          <div class="modal-box">
+            <div class="modal-header">
+              <h2>Keyboard Shortcuts</h2>
+              <button id="closeShortcutsBtn" class="icon-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="shortcutList" class="shortcut-list"></div>
+          </div>
+        </div>
+    </main>
+
+    <div class="bottom-nav">
+        <div class="nav-item" onclick="window.location.href='dashboard.html'">
+            <i class="fa-solid fa-house"></i>
+            <span>Home</span>
+        </div>
+        <div class="nav-item" onclick="window.location.href='project_folder.html'">
+            <i class="fa-solid fa-folder-open feature-icon"></i>
+            <span>Projects</span>
+        </div>
+        <div class="nav-item" onclick="window.location.href='contacts.html'">
+            <i class="fa-solid fa-phone"></i>
+            <span>Contacts</span>
+        </div>
+        <div class="nav-item" onclick="window.location.href='media.html'">
+            <i class="fa-solid fa-image"></i>
+            <span>Media</span>
+        </div>
+        <div class="nav-item active" onclick="window.location.href='more.html'">
+            <i class="fa-solid fa-bars"></i>
+            <span>More</span>
+        </div>
+    </div>
+
+    <script src="shortcuts.js"></script>
+    <script src="tour.js"></script>
+    <script type="module" src="more.js"></script>
+</body>
+</html>
+
+

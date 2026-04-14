@@ -1,0 +1,802 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Character Encoding and Viewport -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  
+  <!-- SEO Meta Tags -->
+  <title>PREP Dashboard - Cinematic Pre-production Management</title>
+  <meta name="description" content="PREP Dashboard - Your cinematic pre-production operating system. Manage scripts, storyboards, shotlists, and shoot schedules all in one place with AI-powered tools.">
+  <meta name="keywords" content="film, pre-production, screenplay, script breakdown, storyboarding, shotlist, cinematography, filmmaking tools, production planning, AI script analysis">
+  <meta name="author" content="PREP">
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="English">
+  <meta name="theme-color" content="#1a1a1a">
+  
+  <!-- Open Graph Tags (Social Media & Link Previews) -->
+  <meta property="og:title" content="PREP Dashboard - Cinematic Pre-production Management">
+  <meta property="og:description" content="Streamline your film production from script to screen with PREP's comprehensive pre-production tools.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://prep-app.com/dashboard">
+  <meta property="og:image" content="https://prep-app.com/assets/og-image.png">
+  <meta property="og:site_name" content="PREP">
+  
+  <!-- Twitter Card Tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="PREP Dashboard - Cinematic Pre-production Management">
+  <meta name="twitter:description" content="Manage every aspect of your film production with PREP's all-in-one pre-production platform.">
+  <meta name="twitter:image" content="https://prep-app.com/assets/twitter-image.png">
+  
+  <!-- Canonical URL -->
+  <meta property="og:url" content="https://prep-app.com/dashboard">
+  <link rel="canonical" href="https://prep-app.com/dashboard">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="/assets/logo.png" type="image/png">
+  <link rel="apple-touch-icon" href="/assets/logo.png">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Poppins:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  
+  <!-- Schema.org Structured Data for Rich Snippets -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "PREP - Cinematic Pre-production Operating System",
+    "description": "Comprehensive web-based platform for streamlining the filmmaking pre-production process with AI-powered tools.",
+    "url": "https://prep-app.com",
+    "applicationCategory": "ProductivityApplication",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD",
+      "description": "Free access to core pre-production tools"
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "ratingCount": "125",
+      "bestRating": "5",
+      "worstRating": "1"
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "PREP",
+      "url": "https://prep-app.com"
+    },
+    "featureList": [
+      "Script Breakdown with AI Analysis",
+      "Visual Storyboarding",
+      "Shotlist Management",
+      "Shoot Schedule Planning",
+      "AI-Powered Script Assistance",
+      "Project Management"
+    ],
+    "image": "https://prep-app.com/assets/logo.png",
+    "operatingSystem": "Web-based (Windows, macOS, Linux)",
+    "browserRequirements": "Modern web browser with JavaScript support",
+    "inLanguage": "en-US",
+    "datePublished": "2024-01-01",
+    "dateModified": "2026-04-13"
+  }
+  </script>
+
+  <!-- Schema.org Organization Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "PREP",
+    "url": "https://prep-app.com",
+    "logo": "https://prep-app.com/assets/logo.png",
+    "description": "Cinematic Pre-production Operating System",
+    "sameAs": [
+      "https://twitter.com/prepapp",
+      "https://facebook.com/prepapp",
+      "https://linkedin.com/company/prepapp"
+    ],
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "Customer Support",
+      "url": "https://prep-app.com/contactsupport.html"
+    }
+  }
+  </script>
+
+  <!-- Schema.org FAQPage for Common Questions -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is PREP?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "PREP is a comprehensive cinematic pre-production operating system designed to streamline the filmmaking process from script to screen. It provides powerful tools for script breakdown, storyboarding, shotlist management, and production planning."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use PREP for free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes! PREP offers free access to core pre-production tools including script breakdown, storyboarding, shotlists, and shoot scheduling."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does PREP have AI features?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, PREP includes AI Scribe - our AI-powered script assistance tool that can analyze screenplays, extract key production elements, and help with script development."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I get started with PREP?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Sign up at prep-app.com, create your first project, and start using PREP's tools to organize your pre-production workflow. We provide guided tours and documentation to help you get started."
+        }
+      }
+    ]
+  }
+  </script>
+  </head>
+<body>
+  <script>
+    // This blocks the rendering until it checks the mode, preventing the flash
+    if (localStorage.getItem("darkMode") === "on") {
+      document.body.classList.add("dark");
+    }
+  </script>
+
+  <!-- Animated Splash Screen -->
+  <div class="splash-screen" id="splashScreen">
+    <div class="splash-content">
+      <h1 class="splash-title">
+        <span class="splash-prep">PREP</span>
+        <span class="splash-middle">Workspace</span>
+      </h1>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="header-top">
+      <h1 class="logo"><span class="logo-prep">PREP</span> <span class="logo-workspace">Workspace</span></h1>
+      <div class="user-menu-container">
+        <button class="user-menu-btn" id="userMenuBtn" title="Menu" aria-label="User menu">
+          <i class="fas fa-ellipsis-vertical"></i>
+        </button>
+        <div class="user-menu-dropdown" id="userMenuDropdown">
+          <div class="menu-item" id="themeToggleItem">
+            <i class="fas fa-moon theme-icon"></i>
+            <span id="themeLabel">Dark Mode</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-item" id="startTourItem">
+            <i class="fas fa-graduation-cap"></i>
+            <span>Start Tour</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-item" id="shareProfileItem">
+            <i class="fas fa-share-alt"></i>
+            <span>Share Profile</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-item" id="featureRequestItem">
+            <i class="fas fa-lightbulb"></i>
+            <span>Request Feature</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-item" id="upgradeProItem" style="color: #ff6500; font-weight: 600;">
+            <i class="fas fa-crown"></i>
+            <span>Upgrade to Pro</span>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-item menu-item-logout" id="logoutItem">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Logout</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="profile-section">
+      <div class="profile-loading" id="profileLoading">
+        <div class="skeleton-image"></div>
+        <div class="skeleton-text"></div>
+      </div>
+      <div class="profile" id="profileContent" style="display: none;">
+        <div class="greeting" id="greetingText" style="display: none;"></div>
+        <img id="profileImage" src="https://via.placeholder.com/60" alt="profile"/>
+        <a href="profile.html" class="edit-link" id="editProfileLink">Edit Profile</a>
+      </div>
+    </div>
+    
+    <!-- CATEGORY TABS -->
+    <div class="feature-categories-header">
+      <div class="category-tabs">
+        <button class="category-tab active" data-category="story">
+          <i class="fas fa-book"></i>
+          <span>Story & Creative</span>
+        </button>
+        <button class="category-tab" data-category="production">
+          <i class="fas fa-film"></i>
+          <span>Production Planning</span>
+        </button>
+        <button class="category-tab" data-category="budget">
+          <i class="fas fa-coins"></i>
+          <span>Budget & Logistics</span>
+        </button>
+        <button class="category-tab" data-category="coming-soon">
+          <i class="fas fa-star"></i>
+          <span>Coming Soon</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- FEATURE SECTIONS BY CATEGORY -->
+    <div class="feature-categories-container">
+      
+      <!-- STORY & CREATIVE -->
+      <div class="feature-category" data-category="story">
+        <div class="feature-list">
+          <div class="feature-box" id="screenplayFeatureBox">
+            <i class="fas fa-file-lines feature-icon"></i>
+            <span class="feature-name">Screenplay</span>
+          </div>
+          <div class="feature-box" id="breakdownFeatureBox" data-tour="script-breakdown">
+            <i class="fa-solid fa-sitemap feature-icon"></i>
+            <span class="feature-name">Script Breakdown</span>
+          </div>
+          <div class="feature-box" id="storyboardFeatureBox" data-tour="scenes">
+            <i class="fa-solid fa-film feature-icon"></i>
+            <span class="feature-name">Storyboarding</span>
+          </div>
+          <div class="feature-box" id="aiScriptFeatureBox" data-tour="ai-scribe">
+            <i class="fas fa-wand-magic-sparkles feature-icon"></i>
+            <span class="feature-name">AI Scribe</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Moodboard')">
+            <i class="fas fa-palette feature-icon"></i>
+            <span class="feature-name">Moodboard</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Script Report')">
+            <i class="fas fa-chart-bar feature-icon"></i>
+            <span class="feature-name">Script Report</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('AV Script')">
+            <i class="fas fa-video feature-icon"></i>
+            <span class="feature-name">AV Script</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRODUCTION PLANNING -->
+      <div class="feature-category" data-category="production" style="display: none;">
+        <div class="feature-list">
+          <div class="feature-box" id="shotlistFeatureBox" data-tour="shot-page">
+            <i class="fa-solid fa-list-ul feature-icon"></i>
+            <span class="feature-name">Shotlist</span>
+          </div>
+          <div class="feature-box" id="shootDaysFeatureBox">
+            <i class="fa-solid fa-calendar-days feature-icon"></i>
+            <span class="feature-name">Shoot Schedule</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Shot Designer')">
+            <i class="fas fa-crosshairs feature-icon"></i>
+            <span class="feature-name">Shot Designer</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Locations')">
+            <i class="fas fa-map-location-dot feature-icon"></i>
+            <span class="feature-name">Locations</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Calendars')">
+            <i class="fas fa-calendar feature-icon"></i>
+            <span class="feature-name">Calendars</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Call Sheet')">
+            <i class="fas fa-list-check feature-icon"></i>
+            <span class="feature-name">Call Sheet</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Strip Board')">
+            <i class="fas fa-square feature-icon"></i>
+            <span class="feature-name">Strip Board</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- BUDGET & LOGISTICS -->
+      <div class="feature-category" data-category="budget" style="display: none;">
+        <div class="feature-list">
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Budget')">
+            <i class="fas fa-dollar-sign feature-icon"></i>
+            <span class="feature-name">Budget</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Cast &amp; Crew Management')">
+            <i class="fas fa-users feature-icon"></i>
+            <span class="feature-name">Cast & Crew</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Costumes &amp; Wardrobes')">
+            <i class="fas fa-closet feature-icon"></i>
+            <span class="feature-name">Costumes & Wardrobes</span>
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- COMING SOON -->
+      <div class="feature-category" data-category="coming-soon" style="display: none;">
+        <div class="coming-soon-info">
+          <i class="fas fa-star coming-soon-icon"></i>
+          <h3>Upcoming Features</h3>
+          <p>Be the first to know when these features launch. Join the waitlist for any feature below.</p>
+        </div>
+        <div class="feature-list">
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Moodboard')">
+            <i class="fas fa-palette feature-icon"></i>
+            <span class="feature-name">Moodboard</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Script Report')">
+            <i class="fas fa-chart-bar feature-icon"></i>
+            <span class="feature-name">Script Report</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('AV Script')">
+            <i class="fas fa-video feature-icon"></i>
+            <span class="feature-name">AV Script</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Shot Designer')">
+            <i class="fas fa-crosshairs feature-icon"></i>
+            <span class="feature-name">Shot Designer</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Locations')">
+            <i class="fas fa-map-location-dot feature-icon"></i>
+            <span class="feature-name">Locations</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Calendars')">
+            <i class="fas fa-calendar feature-icon"></i>
+            <span class="feature-name">Calendars</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Call Sheet')">
+            <i class="fas fa-list-check feature-icon"></i>
+            <span class="feature-name">Call Sheet</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Strip Board')">
+            <i class="fas fa-square feature-icon"></i>
+            <span class="feature-name">Strip Board</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Budget')">
+            <i class="fas fa-dollar-sign feature-icon"></i>
+            <span class="feature-name">Budget</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Cast &amp; Crew Management')">
+            <i class="fas fa-users feature-icon"></i>
+            <span class="feature-name">Cast & Crew</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+          <div class="feature-box coming-soon" onclick="openJoinWaitlistModal('Costumes &amp; Wardrobes')">
+            <i class="fas fa-closet feature-icon"></i>
+            <span class="feature-name">Costumes & Wardrobes</span>
+            <span class="coming-soon-badge">Join Waitlist</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="projects" data-tour="projects-btn">
+      <div class="projects-header">
+        <h3>Your Projects</h3>
+      </div>
+
+      <div class="project-list-container">
+        <div class="loading-container" id="projectsLoading" style="display: grid;">
+          <div class="spinner"></div>
+          <p>Loading projects...</p>
+        </div>
+        <div class="no-projects-message" id="noProjectsMessage" style="display: none;">
+          <div class="no-projects-content">
+            <i class="fa-solid fa-folder-plus no-projects-icon"></i>
+            <h2>Welcome to PREP!</h2>
+            <p class="no-projects-subtitle">Get started by creating your first project</p>
+            
+            <div class="no-projects-steps">
+              <div class="step-item">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                  <h4>Create a Project</h4>
+                  <p>Click the "Create Project" button below to set up your first project</p>
+                </div>
+              </div>
+              
+              <div class="step-item">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                  <h4>Add Your Script</h4>
+                  <p>Upload a script file or use AI Scribe to generate one</p>
+                </div>
+              </div>
+              
+              <div class="step-item">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                  <h4>Use PREP Tools</h4>
+                  <p>Access features like Shotlist, Storyboarding, Script Breakdown & more</p>
+                </div>
+              </div>
+            </div>
+
+            <button id="noProjectsCreateBtn" class="create-first-project-btn">
+              <i class="fa-solid fa-plus"></i> Create Your First Project
+            </button>
+            
+            <p class="no-projects-help-text">
+              <i class="fa-solid fa-info-circle"></i>
+              Projects help you organize all your production planning in one place
+            </p>
+          </div>
+        </div>
+        <div class="project-list" id="projectList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <div class="nav-item active" onclick="window.location.href='dashboard.html'">
+      <i class="fa-solid fa-house"></i>
+      <span>Home</span>
+    </div>
+    <div class="nav-item" onclick="window.location.href='project_folder.html'">
+      <i class="fa-solid fa-folder-open feature-icon"></i>
+      <span>Projects</span>
+    </div>
+    <div class="nav-item" onclick="window.location.href='contacts.html'">
+      <i class="fa-solid fa-phone"></i>
+      <span>Contacts</span>
+    </div>
+    <div class="nav-item" onclick="window.location.href='media.html'">
+      <i class="fa-solid fa-image"></i>
+      <span>Media</span>
+    </div>
+    <div class="nav-item" onclick="window.location.href='more.html'">
+      <i class="fa-solid fa-bars"></i>
+      <span>More</span>
+    </div>
+  </div>
+
+  <div class="modal" id="projectEditDeleteModal">
+    <div class="modal-content">
+      <h3>Edit Project</h3>
+      <input type="text" id="editProjectInput" placeholder="New Project Name">
+      <div class="modal-buttons">
+        <button id="saveEditBtn" class="save" aria-label="Save changes">Done</button>
+        <button class="delete" id="deleteProjectBtn" aria-label="Delete project">Delete</button>
+        <button id="cancelModalBtn" class="cancel" aria-label="Cancel and close">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="createProjectModal">
+    <div class="modal-content">
+      <h3>New Project</h3>
+      <input type="text" id="newProjectNameInput" placeholder="Project Name">
+
+      <div id="createProjectSteps">
+        <div id="createProjectNameStep">
+          <div class="modal-buttons">
+            <button id="createConfirmBtn" class="create" aria-label="Create new project">Continue</button>
+            <button id="cancelCreateBtn" class="cancel" aria-label="Cancel and close">Cancel</button>
+          </div>
+        </div>
+
+        <div id="createProjectOptions" style="display:none;">
+          <p class="modal-subtitle">What would you like to do next?</p>
+          <div class="modal-buttons modal-buttons--vertical">
+            <button id="uploadScriptBtn" class="create" type="button">Upload Script</button>
+            <button id="startAiScriptBtn" class="create" type="button">Start with AI Scribe</button>
+            <button id="backToNameBtn" class="cancel" type="button">Back</button>
+          </div>
+        </div>
+      </div>
+
+      <input type="file" id="projectScriptFileInput" accept=".txt,.fountain" style="display:none;" />
+    </div>
+  </div>
+
+  <!-- Shortcut Modal (shared with More page) -->
+  <div id="shortcutsModal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Keyboard Shortcuts</h2>
+        <button id="closeShortcutsBtn" class="icon-btn"><i class="fas fa-times"></i></button>
+      </div>
+      <div id="shortcutList" class="shortcut-list"></div>
+    </div>
+  </div>
+
+  <div id="shotlistEntryModal" class="modal">
+    <div class="modal-content">
+      <h3>Project Select</h3>
+      <p>Where should this go?</p>
+      <div class="modal-buttons--vertical">
+        <button id="createNewShotlistProjectBtn" class="modal-feature-btn"><i class="fa-solid fa-plus"></i> Create New Project</button>
+        <button id="viewExistingShotlistProjectsBtn" class="modal-feature-btn"><i class="fa-solid fa-folder-open"></i> Use Existing Project</button>
+        <button id="cancelShotlistEntryBtn" class="cancel" aria-label="Cancel and close">Cancel</button>
+      </div>
+      <div id="projectSelectionList" class="project-selection-list">
+        <h4>Select a Project:</h4>
+        <input type="text" id="projectSearchInput" class="search-input" placeholder="Search projects...">
+        <div id="selectableProjectsContainer" class="selectable-projects-grid"></div>
+        <p id="noSelectableProjectsMessage" class="no-projects" style="display: none;">No projects found.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Share Profile Card Modal -->
+  <div class="modal" id="shareProfileModal" style="display: none;">
+    <div class="modal-content share-profile-content" style="max-width: 500px;">
+      <button class="modal-close-btn" id="closeShareModal" aria-label="Close">
+        <i class="fas fa-times"></i>
+      </button>
+      
+      <div class="profile-card-container">
+        <div class="profile-card">
+          <img id="shareCardImage" src="" alt="profile" class="share-card-image" />
+          <h3 id="shareCardName"></h3>
+          <p id="shareCardRole" class="share-card-role"></p>
+          
+          <div class="share-card-details">
+            <div class="detail-row">
+              <span class="detail-label">Location:</span>
+              <span class="detail-value" id="shareCardLocation">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Experience:</span>
+              <span class="detail-value" id="shareCardExperience">—</span>
+            </div>
+          </div>
+
+          <div class="share-card-bio">
+            <p id="shareCardBio"></p>
+          </div>
+
+          <button id="shareCardButton" class="btn-share-primary">
+            <i class="fas fa-share-alt"></i> Share My Profile
+          </button>
+
+          <p class="share-card-link-text">Or copy this link:</p>
+          <div class="share-link-container">
+            <input type="text" id="shareCardLink" readonly class="share-link-input" />
+            <button id="copyLinkBtn" class="copy-btn" title="Copy link">
+              <i class="fas fa-copy"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature Request Modal -->
+  <div class="modal" id="featureRequestModal" style="display: none;">
+    <div class="modal-content feature-request-content" style="max-width: 420px;">
+      <button class="modal-close-btn" id="closeFeatureModal" aria-label="Close">
+        <i class="fas fa-times"></i>
+      </button>
+      
+      <div class="feature-request-header">
+        <i class="fas fa-lightbulb feature-icon"></i>
+        <h2>Request a Feature</h2>
+        <p>Help us improve PREP by sharing your ideas</p>
+      </div>
+
+      <form id="featureRequestForm">
+        <div class="form-group">
+          <label for="featureTitle">Feature Title <span class="required">*</span></label>
+          <input type="text" id="featureTitle" placeholder="e.g., Add team collaboration tools" required />
+          <span class="error-message" id="featureTitleError"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="featureCategory">Category <span class="required">*</span></label>
+          <select id="featureCategory" required>
+            <option value="">Select a category</option>
+            <option value="workflow">Workflow & Efficiency</option>
+            <option value="collaboration">Team Collaboration</option>
+            <option value="production">Production Management</option>
+            <option value="integration">Third-party Integration</option>
+            <option value="ui">User Interface</option>
+            <option value="reporting">Reports & Analytics</option>
+            <option value="mobile">Mobile Features</option>
+            <option value="other">Other</option>
+          </select>
+          <span class="error-message" id="featureCategoryError"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="featureDescription">Description <span class="required">*</span></label>
+          <textarea id="featureDescription" placeholder="Describe the feature and how it would help you..." rows="4" required></textarea>
+          <span class="error-message" id="featureDescriptionError"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="featureUseCase">Use Case / Example (Optional)</label>
+          <textarea id="featureUseCase" placeholder="How would you use this feature?" rows="2"></textarea>
+        </div>
+
+        <div class="feature-request-buttons">
+          <button type="submit" class="btn-submit-feature" id="submitFeatureBtn">
+            <span id="submitFeatureBtnText">Submit Feature Request</span>
+            <div class="spinner-small" id="submitFeatureSpinner" style="display: none;"></div>
+          </button>
+          <button type="button" class="btn-cancel-feature" id="cancelFeatureBtn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="confirmationModal">
+      <div class="modal-content modal-confirmation">
+          <p id="confirmationMessage"></p>
+          <div class="modal-buttons">
+              <button class="cancel" id="confirmCancelBtn">No</button>
+              <button class="create" id="confirmOkBtn">Yes</button>
+          </div>
+      </div>
+  </div>
+  <div class="toast-message" id="toastMessage"></div>
+
+  <!-- Welcome Guide Modal for New Users -->
+  <div id="welcomeGuideModal" class="modal">
+    <div class="modal-content welcome-modal">
+      <div class="welcome-header">
+        <i class="fas fa-rocket welcome-icon"></i>
+        <h2>Welcome to PREP!</h2>
+        <p>Your cinematic pre-production operating system</p>
+      </div>
+
+      <div class="welcome-content">
+        <div class="welcome-step">
+          <div class="step-icon">
+            <i class="fas fa-folder-plus"></i>
+          </div>
+          <div class="step-content">
+            <h3>Start with a Project</h3>
+            <p>Create your first project to organize all your pre-production materials.</p>
+          </div>
+        </div>
+
+        <div class="welcome-step">
+          <div class="step-icon">
+            <i class="fas fa-file-alt"></i>
+          </div>
+          <div class="step-content">
+            <h3>Upload Your Script</h3>
+            <p>Use our AI Script Breakdown to automatically extract cast, props, locations, and more.</p>
+          </div>
+        </div>
+
+        <div class="welcome-step">
+          <div class="step-icon">
+            <i class="fas fa-tasks"></i>
+          </div>
+          <div class="step-content">
+            <h3>Plan Your Production</h3>
+            <p>Create shotlists, storyboards, and shooting schedules to keep everything organized.</p>
+          </div>
+        </div>
+
+        <div class="welcome-step">
+          <div class="step-icon">
+            <i class="fas fa-users"></i>
+          </div>
+          <div class="step-content">
+            <h3>Collaborate</h3>
+            <p>Share projects with your team and work together seamlessly.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="welcome-actions">
+        <button id="startTourBtn" class="primary">Take a Quick Tour</button>
+        <button id="startCreatingBtn" class="primary">Start Creating</button>
+        <button id="viewGuideBtn" class="secondary">View Full Guide</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Onboarding Tour -->
+  <div id="tourOverlay">
+    <div id="tourHighlight"></div>
+    <div id="tourTooltip">
+      <div id="tourProgress"></div>
+      <div id="tourStepCounter">Step 1 of 3</div>
+      <h3 id="tourTitle">Welcome to PREP!</h3>
+      <p id="tourDescription">Your cinematic pre-production operating system. Let's take a quick tour to help you get started.</p>
+      <div class="tour-controls">
+        <button id="tourPrev" style="display: none;">Previous</button>
+        <button id="tourNext">Next</button>
+        <button id="tourFinish" style="display: none;">Get Started!</button>
+        <button id="tourSkip">Skip</button>
+        <button id="tourClose">&times;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Join Waitlist Modal -->
+  <div class="modal" id="joinWaitlistModal" style="display: none;">
+    <div class="modal-content join-waitlist-content">
+      <button class="modal-close-btn" id="closeWaitlistModal" aria-label="Close">
+        <i class="fas fa-times"></i>
+      </button>
+      
+      <div class="waitlist-header">
+        <i class="fas fa-star waitlist-icon"></i>
+        <h2 id="waitlistFeatureName">Feature Name</h2>
+        <p>Get notified when this feature launches</p>
+      </div>
+
+      <form id="joinWaitlistForm">
+        <div class="form-group">
+          <label for="waitlistEmail">Email Address <span class="required">*</span></label>
+          <input type="email" id="waitlistEmail" placeholder="you@example.com" required />
+          <span class="error-message" id="waitlistEmailError"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="waitlistName">Name (Optional)</label>
+          <input type="text" id="waitlistName" placeholder="Your name" />
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="waitlistNotifications" checked />
+            Notify me about similar features and updates
+          </label>
+        </div>
+
+        <div class="waitlist-buttons">
+          <button type="submit" class="btn-join-waitlist" id="submitWaitlistBtn">
+            <span id="submitWaitlistBtnText">Join Waitlist</span>
+            <div class="spinner-small" id="submitWaitlistSpinner" style="display: none;"></div>
+          </button>
+          <button type="button" class="btn-cancel-waitlist" id="cancelWaitlistBtn">Not Now</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="shortcuts.js"></script>
+  <script src="tour.js"></script>
+  <script src="dashboard.js" type="module"></script>
+</body>
+</html>
+
+
