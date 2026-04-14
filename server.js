@@ -12,9 +12,43 @@ if (typeof fetch === 'undefined') {
 
 const app = express();
 
+// CORS Configuration - Allow requests from frontend and handle preflight
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'https://prepapp.name.ng',
+      'https://www.prepapp.name.ng',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000'
+    ];
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range']
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
+
+// Explicit preflight handler for all routes
+app.options('*', cors(corsOptions));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // Email Service Configuration (Your Brevo account)
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
