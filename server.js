@@ -16,7 +16,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Brevo API Configuration
+// Email Service Configuration (Your Render microservice)
+const EMAIL_SERVICE_URL = process.env.EMAIL_SERVICE_URL || 'https://prepemail.onrender.com/api/send-welcome-email';
+
+// Brevo API Configuration (Legacy - keeping for backward compatibility)
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_API_URL = 'https://api.brevo.com/v3';
 
@@ -186,6 +189,292 @@ function generateWelcomeEmailHTML(fullName, accountType) {
     </html>
   `;
 }
+
+/**
+ * Send payment confirmation email via Render email service
+ * Uses your existing microservice endpoint
+ */
+async function sendPaymentConfirmationEmail(email, fullName, plan, amount, transactionId) {
+  try {
+    const response = await fetchFn(EMAIL_SERVICE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: email,
+        fullName: fullName,
+        accountType: `payment_${plan}`  // Mark this as payment email type
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      console.log('Payment confirmation email sent:', result.messageId);
+      return true;
+    } else {
+      console.error('Failed to send payment email:', result.error);
+      // Don't fail payment if email fails - just log it
+      return false;
+    }
+  } catch (error) {
+    console.error('Error sending payment confirmation email:', error);
+    // Don't fail the payment if email service is down
+    return false;
+  }
+}
+
+/**
+ * Flutterwave Payment Endpoints
+ */
+
+const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
+const FLUTTERWAVE_API_URL = 'https://api.flutterwave.com/v3';
+
+/**
+ * Initialize payment - Create transaction reference and prepare payment
+ */
+app.post('/api/payment/initialize', async (req, res) => {
+  try {
+    const { userId, email, displayName, plan, amount, currency } = req.body;
+
+    // Validate required fields
+    if (!userId || !email || !plan || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required payment information'
+      });
+    }
+
+    if (!FLUTTERWAVE_SECRET_KEY) {
+      console.error('FLUTTERWAVE_SECRET_KEY not configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Payment service not configured'
+      });
+    }
+
+    // Generate unique transaction reference
+    const txRef = `PREP-${userId}-${Date.now()}`;
+
+    // Create payment payload
+    const paymentPayload = {
+      tx_ref: txRef,
+      amount: amount,
+      currency: currency || 'USD',
+      payment_options: 'card,mobilemoney,ussd',
+      customer: {
+        email: email,
+        name: displayName || 'Customer'
+      },
+      customizations: {
+        title: `PREP ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
+        description: `Subscribe to PREP ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan`,
+        logo: 'https://res.cloudinary.com/dct7psmk7/image/upload/v1234567890/prep-logo.png'
+      },
+      meta: {
+        userId: userId,
+        plan: plan
+      },
+      redirect_url: `${process.env.APP_URL || 'http://localhost:3000'}/payment-success`
+    };
+
+    // Initialize transaction with Flutterwave
+    const response = await fetchFn(`${FLUTTERWAVE_API_URL}/payments`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(paymentPayload)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('Flutterwave initialization failed:', error);
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to initialize payment'
+      });
+    }
+
+    const data = await response.json();
+
+    res.json({
+      success: true,
+      data: {
+        txRef: txRef,
+        paymentLink: data.data?.link || null,
+        transactionId: data.data?.id || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Payment initialization error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to initialize payment'
+    });
+  }
+});
+
+/**
+ * Verify payment - Check payment status with Flutterwave
+ */
+app.post('/api/payment/verify', async (req, res) => {
+  try {
+    const { transactionId, transactionRef, userId, status } = req.body;
+
+    if (!transactionId && !transactionRef) {
+      return res.status(400).json({
+        success: false,
+        message: 'Transaction ID or reference required'
+      });
+    }
+
+    if (!FLUTTERWAVE_SECRET_KEY) {
+      console.error('FLUTTERWAVE_SECRET_KEY not configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Payment service not configured'
+      });
+    }
+
+    // Verify transaction with Flutterwave
+    const verifyUrl = transactionId 
+      ? `${FLUTTERWAVE_API_URL}/transactions/${transactionId}/verify`
+      : `${FLUTTERWAVE_API_URL}/transactions/verify_by_ref?tx_ref=${transactionRef}`;
+
+    const response = await fetchFn(verifyUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('Flutterwave verification failed:', error);
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed',
+        status: 'failed'
+      });
+    }
+
+    const data = await response.json();
+    const paymentStatus = data.data?.status;
+    const plan = data.data?.meta?.plan || 'pro';
+    const subscriptionId = data.data?.id;
+
+    // Check if payment was successful
+    if (paymentStatus === 'successful') {
+      // Send payment confirmation email asynchronously (don't block response)
+      const email = data.data?.customer?.email;
+      const customerName = data.data?.customer?.name || 'Valued Customer';
+      if (email) {
+        sendPaymentConfirmationEmail(email, customerName, plan, data.data?.amount, subscriptionId)
+          .catch(err => console.error('Email sending failed (non-blocking):', err));
+      }
+
+      res.json({
+        success: true,
+        status: 'success',
+        message: 'Payment verified successfully',
+        plan: plan,
+        subscriptionId: subscriptionId,
+        amount: data.data?.amount,
+        currency: data.data?.currency
+      });
+    } else {
+      res.json({
+        success: false,
+        status: paymentStatus,
+        message: `Payment status: ${paymentStatus}`
+      });
+    }
+
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Payment verification failed',
+      status: 'error'
+    });
+  }
+});
+
+/**
+ * Get payment history for a user
+ */
+app.get('/api/payment/history/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID required'
+      });
+    }
+
+    // Note: Actual implementation would fetch from Firestore
+    // This is a placeholder for the endpoint structure
+    res.json({
+      success: true,
+      payments: []
+    });
+
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch payment history'
+    });
+  }
+});
+
+/**
+ * Webhook endpoint for Flutterwave payment updates
+ */
+app.post('/api/payment/webhook', async (req, res) => {
+  try {
+    const payload = req.body;
+
+    // Verify webhook signature (optional but recommended)
+    const hash = req.headers['verificationhash'];
+    
+    console.log('Webhook received:', payload);
+
+    // Log payment event and send confirmation email
+    if (payload.data?.status === 'successful') {
+      console.log(`Payment successful for transaction: ${payload.data.tx_ref}`);
+      
+      // Send payment confirmation email
+      const email = payload.data?.customer?.email;
+      const customerName = payload.data?.customer?.name || 'Valued Customer';
+      const plan = payload.data?.meta?.plan || 'pro';
+      
+      if (email) {
+        sendPaymentConfirmationEmail(email, customerName, plan, payload.data?.amount, payload.data?.id)
+          .catch(err => console.error('Webhook email sending failed:', err));
+      }
+      
+      // Update user subscription in Firestore if needed
+    }
+
+    res.json({ success: true, message: 'Webhook received' });
+
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Webhook processing failed'
+    });
+  }
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
