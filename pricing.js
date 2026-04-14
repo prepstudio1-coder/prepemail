@@ -1,5 +1,6 @@
 import { auth } from './firebase.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js';
+import { apiConfig } from './config.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   applyDarkMode();
@@ -47,7 +48,7 @@ async function startProPayment(user) {
     button.disabled = true;
 
     // Initialize payment with server
-    const response = await fetch('/api/payment/initialize', {
+    const response = await fetch(`${apiConfig.baseUrl}/api/payment/initialize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -122,7 +123,7 @@ async function startProPayment(user) {
 
 async function verifyPayment(transactionId, plan) {
   try {
-    const response = await fetch('/api/payment/verify', {
+    const response = await fetch(`${apiConfig.baseUrl}/api/payment/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
