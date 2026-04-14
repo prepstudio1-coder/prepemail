@@ -428,7 +428,7 @@ app.post('/api/payment/initialize', async (req, res) => {
       customizations: {
         title: `PREP ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
         description: `Subscribe to PREP ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan`,
-        logo: 'https://res.cloudinary.com/dct7psmk7/image/upload/v1234567890/prep-logo.png'
+        logo: 'https://prepapp.name.ng/assets/logo.png'
       },
       meta: {
         userId: userId,
