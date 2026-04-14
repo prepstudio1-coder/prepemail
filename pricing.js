@@ -61,6 +61,11 @@ async function startProPayment(user) {
       }),
     });
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Server error: ${response.status}`);
+    }
+
     const data = await response.json();
 
     if (!data.success) {
@@ -131,6 +136,11 @@ async function verifyPayment(transactionId, plan) {
         plan: plan
       }),
     });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Server error: ${response.status}`);
+    }
 
     const data = await response.json();
     
