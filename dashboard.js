@@ -295,6 +295,22 @@ function updateProfileDisplay(profileData) {
     `;
     greetingText.style.display = 'block';
   }
+
+  // Update plan status badge in header
+  const planBadge = document.getElementById('planStatusBadge');
+  if (planBadge) {
+    const plan = profileData.plan || 'free';
+    const badgeStyles = {
+      free: { bg: '#f0f0f0', text: '#666', label: 'Free' },
+      pro: { bg: '#fff3e0', text: '#ff6500', label: 'Pro ✨' },
+      studio: { bg: '#f3e5f5', text: '#5a189a', label: 'Studio' }
+    };
+    
+    const style = badgeStyles[plan] || badgeStyles.free;
+    planBadge.textContent = style.label;
+    planBadge.style.background = style.bg;
+    planBadge.style.color = style.text;
+  }
 }
 
 // Loading States

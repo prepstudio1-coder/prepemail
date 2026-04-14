@@ -171,7 +171,19 @@
 
   <div class="container">
     <div class="header-top">
-      <h1 class="logo"><span class="logo-prep">PREP</span> <span class="logo-workspace">Workspace</span></h1>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <h1 class="logo"><span class="logo-prep">PREP</span> <span class="logo-workspace">Workspace</span></h1>
+        <span id="planStatusBadge" style="
+          display: inline-block;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          white-space: nowrap;
+          background: #f0f0f0;
+          color: #666;
+        ">Free</span>
+      </div>
       <div class="user-menu-container">
         <button class="user-menu-btn" id="userMenuBtn" title="Menu" aria-label="User menu">
           <i class="fas fa-ellipsis-vertical"></i>
