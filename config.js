@@ -30,6 +30,11 @@ export const apiConfig = {
   baseUrl: import.meta?.env?.VITE_API_BASE_URL || "https://prepemail.onrender.com"
 };
 
+// Hugging Face Configuration
+export const huggingFaceConfig = {
+  token: import.meta?.env?.VITE_HF_TOKEN || "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"
+};
+
 // App Environment
 export const appConfig = {
   environment: import.meta?.env?.MODE || "development",
@@ -46,5 +51,6 @@ export default {
   firebase: firebaseConfig,
   cloudinary: cloudinaryConfig,
   api: apiConfig,
+  huggingFace: huggingFaceConfig,
   app: appConfig
 };

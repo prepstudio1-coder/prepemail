@@ -3,14 +3,22 @@ const cors = require('cors');
 require('dotenv').config();
 
 // Firebase Admin SDK
-const admin = require('firebase-admin');
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
-if (Object.keys(serviceAccount).length > 0) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
+let db = null;
+try {
+  const admin = require('firebase-admin');
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
+  if (Object.keys(serviceAccount).length > 0) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    db = admin.firestore();
+    console.log('Firebase Admin initialized successfully');
+  } else {
+    console.warn('FIREBASE_SERVICE_ACCOUNT_JSON not set — Firestore features disabled');
+  }
+} catch (err) {
+  console.warn('firebase-admin not available — Firestore features disabled:', err.message);
 }
-const db = admin.firestore();
 
 // Use native fetch for Node 18+ or import node-fetch for older versions
 let fetchFn;
@@ -547,13 +555,13 @@ app.post('/api/payment/verify', async (req, res) => {
     if (paymentStatus === 'successful') {
       try {
         // Update user's plan in Firestore if userId is available
-        if (transactionUserId) {
+        if (transactionUserId && db) {
           await db.collection('users').doc(transactionUserId).update({
             plan: plan,
             subscriptionId: subscriptionId,
             subscriptionStatus: 'active',
-            subscriptionStartDate: admin.firestore.Timestamp.now(),
-            lastPaymentDate: admin.firestore.Timestamp.now(),
+            subscriptionStartDate: new Date(),
+            lastPaymentDate: new Date(),
             lastPaymentAmount: data.data?.amount,
             lastPaymentCurrency: data.data?.currency
           });
