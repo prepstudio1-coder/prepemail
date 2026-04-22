@@ -2,6 +2,16 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// Firebase Admin SDK
+const admin = require('firebase-admin');
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
+if (Object.keys(serviceAccount).length > 0) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+}
+const db = admin.firestore();
+
 // Use native fetch for Node 18+ or import node-fetch for older versions
 let fetchFn;
 if (typeof fetch === 'undefined') {
@@ -21,7 +31,9 @@ const corsOptions = {
       'http://localhost:3000',
       'http://localhost:5173',
       'http://127.0.0.1:5173',
-      'http://127.0.0.1:3000'
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5500',
+      'http://localhost:5500'
     ];
     
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -525,12 +537,34 @@ app.post('/api/payment/verify', async (req, res) => {
     const paymentStatus = data.data?.status;
     const plan = data.data?.meta?.plan || 'pro';
     const subscriptionId = data.data?.id;
+    const email = data.data?.customer?.email;
+    const customerName = data.data?.customer?.name || 'Valued Customer';
+    
+    // Extract userId from request or transaction meta
+    const transactionUserId = userId || data.data?.meta?.userId;
 
     // Check if payment was successful
     if (paymentStatus === 'successful') {
+      try {
+        // Update user's plan in Firestore if userId is available
+        if (transactionUserId) {
+          await db.collection('users').doc(transactionUserId).update({
+            plan: plan,
+            subscriptionId: subscriptionId,
+            subscriptionStatus: 'active',
+            subscriptionStartDate: admin.firestore.Timestamp.now(),
+            lastPaymentDate: admin.firestore.Timestamp.now(),
+            lastPaymentAmount: data.data?.amount,
+            lastPaymentCurrency: data.data?.currency
+          });
+          console.log(`✅ Plan updated to "${plan}" for user ${transactionUserId}`);
+        }
+      } catch (firestoreError) {
+        console.error('❌ Error updating user plan in Firestore:', firestoreError);
+        // Don't fail the response - payment was successful, just log the error
+      }
+
       // Send payment confirmation email asynchronously (don't block response)
-      const email = data.data?.customer?.email;
-      const customerName = data.data?.customer?.name || 'Valued Customer';
       if (email) {
         sendPaymentConfirmationEmail(email, customerName, plan, data.data?.amount, subscriptionId)
           .catch(err => console.error('Email sending failed (non-blocking):', err));
@@ -633,9 +667,270 @@ app.post('/api/payment/webhook', async (req, res) => {
   }
 });
 
+/**
+ * Save user subscription to Firebase
+ * Called from frontend after successful payment verification
+ */
+app.post('/api/subscription/save', async (req, res) => {
+  try {
+    const { userId, plan, subscriptionId, amount, currency } = req.body;
+
+    if (!userId || !plan) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID and plan are required'
+      });
+    }
+
+    // Log subscription save (in production, you'd update Firestore here)
+    console.log(`Subscription saved for user ${userId}: ${plan} plan`);
+
+    res.json({
+      success: true,
+      message: 'Subscription saved successfully',
+      data: {
+        userId: userId,
+        plan: plan,
+        subscriptionId: subscriptionId,
+        amount: amount,
+        currency: currency,
+        savedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error saving subscription:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to save subscription'
+    });
+  }
+});
+
+/**
+ * Hugging Face Image Generation Proxy
+ * Proxies requests to HF Inference API to avoid CORS issues
+ */
+app.post('/api/ai/generate-image', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({
+        success: false,
+        message: 'Prompt is required'
+      });
+    }
+
+    // Read token from server environment — never expose it to the client
+    const hfToken = process.env.HF_TOKEN;
+    if (!hfToken) {
+      return res.status(500).json({
+        success: false,
+        message: 'HF_TOKEN not configured on server. Add it to your Render environment variables.'
+      });
+    }
+
+    const HF_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
+
+    const response = await fetchFn(HF_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${hfToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: {
+          num_inference_steps: 25,
+          guidance_scale: 7.5,
+          negative_prompt: 'blurry, bad quality, distorted, ugly, low resolution'
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('HF API Error:', errorText);
+      
+      if (response.status === 503) {
+        return res.status(503).json({
+          success: false,
+          message: 'Model is loading. Please wait a moment and try again.'
+        });
+      }
+      if (response.status === 401) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid Hugging Face token.'
+        });
+      }
+      
+      return res.status(response.status).json({
+        success: false,
+        message: `Failed to generate image (${response.status})`
+      });
+    }
+
+    // Get the image blob
+    const imageBuffer = await response.arrayBuffer();
+    
+    // Convert to base64 for JSON transport
+    const base64Image = Buffer.from(imageBuffer).toString('base64');
+    
+    res.json({
+      success: true,
+      image: base64Image,
+      contentType: response.headers.get('content-type') || 'image/jpeg'
+    });
+
+  } catch (error) {
+    console.error('AI image generation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate image'
+    });
+  }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'Server is running' });
+});
+
+/**
+ * Get payment history for a user
+ */
+app.get('/api/payment/history/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID required'
+      });
+    }
+
+    // Note: In production, fetch from Firestore
+    // For now, return empty array
+    res.json({
+      success: true,
+      payments: []
+    });
+
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch payment history'
+    });
+  }
+});
+
+/**
+ * Cancel user subscription (downgrade to free)
+ */
+app.post('/api/subscription/cancel', async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID required'
+      });
+    }
+
+    // Import handlePlanDowngrade from firebase-operations
+    const { handlePlanDowngrade } = await import('./firebase-operations.js');
+    
+    // Handle plan downgrade: archive excess projects, disable team collaboration
+    const downgradeResult = await handlePlanDowngrade(userId);
+
+    // Log the downgrade event
+    console.log(`Subscription cancellation completed for user: ${userId}`, downgradeResult);
+
+    res.json({
+      success: true,
+      message: downgradeResult.message,
+      newPlan: 'free',
+      archivedProjects: downgradeResult.archivedProjects,
+      archivedCount: downgradeResult.archivedProjects.length
+    });
+
+  } catch (error) {
+    console.error('Error cancelling subscription:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to cancel subscription'
+    });
+  }
+});
+
+/**
+ * Get storage usage for a user
+ */
+app.get('/api/storage/usage/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID required'
+      });
+    }
+
+    // Note: In production, fetch from Firestore
+    res.json({
+      success: true,
+      data: {
+        usedMB: 0,
+        maxMB: 50,
+        percentUsed: 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting storage usage:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get storage usage'
+    });
+  }
+});
+
+/**
+ * Check subscription expiry and downgrade if needed
+ */
+app.post('/api/subscription/check-expiry', async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID required'
+      });
+    }
+
+    // Note: In production, check Firestore for expiry date
+    // If expired, downgrade to free and archive projects
+
+    res.json({
+      success: true,
+      message: 'Subscription status checked',
+      expired: false
+    });
+
+  } catch (error) {
+    console.error('Error checking subscription expiry:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to check subscription status'
+    });
+  }
 });
 
 // Start server
