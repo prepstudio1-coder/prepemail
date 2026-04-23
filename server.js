@@ -941,6 +941,190 @@ app.post('/api/subscription/check-expiry', async (req, res) => {
   }
 });
 
+/**
+ * Send collaboration invite email
+ * Handles two cases:
+ *  - userExists: true  → notify existing PREP user they've been added
+ *  - userExists: false → invite non-user to sign up and join the project
+ */
+app.post('/api/collaboration/invite', async (req, res) => {
+  try {
+    const { inviteeEmail, inviteeName, inviterName, projectName, role, userExists, signupLink } = req.body;
+
+    if (!inviteeEmail || !inviterName || !projectName) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    if (!BREVO_API_KEY) {
+      return res.status(500).json({ success: false, message: 'Email service not configured' });
+    }
+
+    const subject = userExists
+      ? `${inviterName} added you to a project on PREP`
+      : `You've been invited to collaborate on PREP`;
+
+    const htmlContent = userExists
+      ? generateCollabNotificationEmail(inviteeName || inviteeEmail, inviterName, projectName, role)
+      : generateCollabInviteEmail(inviteeEmail, inviterName, projectName, role, signupLink);
+
+    const emailResponse = await fetchFn(`${BREVO_API_URL}/smtp/email`, {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        to: [{ email: inviteeEmail, name: inviteeName || inviteeEmail }],
+        sender: { name: 'PREP - Cinematic Pre-production', email: 'noreply@prepapp.name.ng' },
+        subject,
+        htmlContent,
+        replyTo: { email: 'hello@prepapp.name.ng', name: 'PREP Support' }
+      })
+    });
+
+    if (!emailResponse.ok) {
+      const err = await emailResponse.json();
+      console.error('Brevo collab invite email failed:', err);
+      return res.status(500).json({ success: false, message: 'Failed to send email' });
+    }
+
+    res.json({ success: true, message: 'Invitation email sent' });
+
+  } catch (error) {
+    console.error('Collaboration invite email error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to send invite email' });
+  }
+});
+
+/**
+ * Email for existing PREP users — notifies them they've been added to a project
+ */
+function generateCollabNotificationEmail(recipientName, inviterName, projectName, role) {
+  const roleLabel = role === 'editor' ? 'Editor' : 'Viewer';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>You've been added to a project</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #f4f7f9; margin: 0; padding: 0; }
+        .wrapper { max-width: 580px; margin: 40px auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(90,24,154,0.08); }
+        .header { background: linear-gradient(135deg, #5a189a, #7b2fbe); padding: 36px 32px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 26px; letter-spacing: -0.5px; }
+        .header p { color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 15px; }
+        .body { padding: 32px; }
+        .body p { color: #444; font-size: 15px; line-height: 1.7; margin: 0 0 16px; }
+        .project-card { background: #f8f4ff; border: 1px solid #e0d0f5; border-radius: 12px; padding: 20px 24px; margin: 24px 0; }
+        .project-card .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #9b59b6; margin-bottom: 6px; }
+        .project-card .name { font-size: 20px; font-weight: 700; color: #3E1F47; }
+        .role-badge { display: inline-block; background: rgba(90,24,154,0.12); color: #5a189a; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-top: 8px; }
+        .cta { text-align: center; margin: 28px 0 8px; }
+        .cta a { display: inline-block; background: #5a189a; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; }
+        .footer { background: #f4f7f9; padding: 20px 32px; text-align: center; font-size: 12px; color: #999; }
+        .footer a { color: #5a189a; text-decoration: none; }
+      </style>
+    </head>
+    <body>
+      <div class="wrapper">
+        <div class="header">
+          <h1>PREP</h1>
+          <p>Cinematic Pre-production</p>
+        </div>
+        <div class="body">
+          <p>Hi <strong>${recipientName}</strong>,</p>
+          <p><strong>${inviterName}</strong> has added you as a collaborator on their project. You can now access it directly from your PREP dashboard.</p>
+          <div class="project-card">
+            <div class="label">Project</div>
+            <div class="name">${projectName}</div>
+            <span class="role-badge">${roleLabel}</span>
+          </div>
+          <p>Head to your Projects page and you'll see it listed under your projects.</p>
+          <div class="cta">
+            <a href="https://prepapp.name.ng/project_folder.html">Open My Projects</a>
+          </div>
+        </div>
+        <div class="footer">
+          <p>&copy; 2026 PREP &nbsp;|&nbsp; <a href="https://prepapp.name.ng">prepapp.name.ng</a> &nbsp;|&nbsp; <a href="https://prepapp.name.ng/contactsupport.html">Support</a></p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * Email for non-PREP users — invites them to sign up and join the project
+ */
+function generateCollabInviteEmail(inviteeEmail, inviterName, projectName, role, signupLink) {
+  const roleLabel = role === 'editor' ? 'Editor' : 'Viewer';
+  const link = signupLink || 'https://prepapp.name.ng/signup.html';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>You're invited to PREP</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #f4f7f9; margin: 0; padding: 0; }
+        .wrapper { max-width: 580px; margin: 40px auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(90,24,154,0.08); }
+        .header { background: linear-gradient(135deg, #ff6500, #ff8533); padding: 36px 32px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 26px; letter-spacing: -0.5px; }
+        .header p { color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 15px; }
+        .body { padding: 32px; }
+        .body p { color: #444; font-size: 15px; line-height: 1.7; margin: 0 0 16px; }
+        .project-card { background: #fff5f0; border: 1px solid #ffd0b5; border-radius: 12px; padding: 20px 24px; margin: 24px 0; }
+        .project-card .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #ff6500; margin-bottom: 6px; }
+        .project-card .name { font-size: 20px; font-weight: 700; color: #7a2e00; }
+        .role-badge { display: inline-block; background: rgba(255,101,0,0.12); color: #ff6500; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-top: 8px; }
+        .features { background: #f8f4ff; border-radius: 10px; padding: 16px 20px; margin: 20px 0; }
+        .features li { color: #555; font-size: 14px; margin: 6px 0; }
+        .cta { text-align: center; margin: 28px 0 8px; }
+        .cta a { display: inline-block; background: #ff6500; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-weight: 700; font-size: 15px; }
+        .note { font-size: 13px; color: #999; text-align: center; margin-top: 12px; }
+        .footer { background: #f4f7f9; padding: 20px 32px; text-align: center; font-size: 12px; color: #999; }
+        .footer a { color: #5a189a; text-decoration: none; }
+      </style>
+    </head>
+    <body>
+      <div class="wrapper">
+        <div class="header">
+          <h1>You're Invited to PREP</h1>
+          <p>Cinematic Pre-production Platform</p>
+        </div>
+        <div class="body">
+          <p>Hi there,</p>
+          <p><strong>${inviterName}</strong> has invited you to collaborate on their project on <strong>PREP</strong> — the cinematic pre-production platform for filmmakers.</p>
+          <div class="project-card">
+            <div class="label">Project</div>
+            <div class="name">${projectName}</div>
+            <span class="role-badge">${roleLabel}</span>
+          </div>
+          <p>To access this project, create your free PREP account. It only takes a minute.</p>
+          <div class="features">
+            <ul style="margin:0; padding-left:20px;">
+              <li>Script breakdown, storyboarding & shotlists</li>
+              <li>AI-powered script analysis</li>
+              <li>Shoot scheduling & production planning</li>
+              <li>Real-time team collaboration</li>
+            </ul>
+          </div>
+          <div class="cta">
+            <a href="${link}">Create Free Account & Join Project</a>
+          </div>
+          <p class="note">Once you sign up with this email address (${inviteeEmail}), ${inviterName} can add you to the project.</p>
+        </div>
+        <div class="footer">
+          <p>&copy; 2026 PREP &nbsp;|&nbsp; <a href="https://prepapp.name.ng">prepapp.name.ng</a> &nbsp;|&nbsp; <a href="https://prepapp.name.ng/contactsupport.html">Support</a></p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
