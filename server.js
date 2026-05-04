@@ -555,7 +555,16 @@ app.post('/api/payment/verify', async (req, res) => {
     if (paymentStatus === 'successful') {
       try {
         // Update user's plan in Firestore if userId is available
-        if (transactionUserId && db) {
+        if (transactionUserId) {
+          if (!db) {
+            console.error('❌ Firestore database not initialized - check FIREBASE_SERVICE_ACCOUNT_JSON environment variable');
+            return res.status(500).json({
+              success: false,
+              message: 'Database not configured - contact support',
+              status: 'error'
+            });
+          }
+
           await db.collection('users').doc(transactionUserId).update({
             plan: plan,
             subscriptionId: subscriptionId,
@@ -566,10 +575,21 @@ app.post('/api/payment/verify', async (req, res) => {
             lastPaymentCurrency: data.data?.currency
           });
           console.log(`✅ Plan updated to "${plan}" for user ${transactionUserId}`);
+        } else {
+          console.error('❌ No userId available for Firestore update');
+          return res.status(400).json({
+            success: false,
+            message: 'User ID required for plan update',
+            status: 'error'
+          });
         }
       } catch (firestoreError) {
         console.error('❌ Error updating user plan in Firestore:', firestoreError);
-        // Don't fail the response - payment was successful, just log the error
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to update user plan in database',
+          status: 'error'
+        });
       }
 
       // Send payment confirmation email asynchronously (don't block response)
@@ -655,13 +675,36 @@ app.post('/api/payment/webhook', async (req, res) => {
       const email = payload.data?.customer?.email;
       const customerName = payload.data?.customer?.name || 'Valued Customer';
       const plan = payload.data?.meta?.plan || 'pro';
+      const userId = payload.data?.meta?.userId;
+      
+      // Update user subscription in Firestore if userId is available
+      if (userId) {
+        if (!db) {
+          console.error('❌ Webhook: Firestore database not initialized - check FIREBASE_SERVICE_ACCOUNT_JSON environment variable');
+        } else {
+          try {
+            await db.collection('users').doc(userId).update({
+              plan: plan,
+              subscriptionId: payload.data?.id,
+              subscriptionStatus: 'active',
+              subscriptionStartDate: new Date(),
+              lastPaymentDate: new Date(),
+              lastPaymentAmount: payload.data?.amount,
+              lastPaymentCurrency: payload.data?.currency
+            });
+            console.log(`✅ Webhook updated plan to "${plan}" for user ${userId}`);
+          } catch (firestoreError) {
+            console.error('❌ Webhook: Error updating user plan in Firestore:', firestoreError);
+          }
+        }
+      } else {
+        console.error('❌ Webhook: No userId available for Firestore update');
+      }
       
       if (email) {
         sendPaymentConfirmationEmail(email, customerName, plan, payload.data?.amount, payload.data?.id)
           .catch(err => console.error('Webhook email sending failed:', err));
       }
-      
-      // Update user subscription in Firestore if needed
     }
 
     res.json({ success: true, message: 'Webhook received' });
@@ -690,8 +733,33 @@ app.post('/api/subscription/save', async (req, res) => {
       });
     }
 
-    // Log subscription save (in production, you'd update Firestore here)
-    console.log(`Subscription saved for user ${userId}: ${plan} plan`);
+    // Update user subscription in Firestore
+    if (!db) {
+      console.error('❌ Firestore database not initialized - check FIREBASE_SERVICE_ACCOUNT_JSON environment variable');
+      return res.status(500).json({
+        success: false,
+        message: 'Database not configured - contact support'
+      });
+    }
+
+    try {
+      await db.collection('users').doc(userId).update({
+        plan: plan,
+        subscriptionId: subscriptionId,
+        subscriptionStatus: 'active',
+        subscriptionStartDate: new Date(),
+        lastPaymentDate: new Date(),
+        lastPaymentAmount: amount,
+        lastPaymentCurrency: currency
+      });
+      console.log(`✅ Subscription saved for user ${userId}: ${plan} plan`);
+    } catch (firestoreError) {
+      console.error('❌ Error saving subscription to Firestore:', firestoreError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to save subscription to database'
+      });
+    }
 
     res.json({
       success: true,
