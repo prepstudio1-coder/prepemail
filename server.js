@@ -1193,6 +1193,45 @@ function generateCollabInviteEmail(inviteeEmail, inviterName, projectName, role,
   `;
 }
 
+/**
+ * Gemini AI Proxy
+ * Keeps the API key server-side so it is never exposed to the browser.
+ */
+app.post('/api/ai/gemini', async (req, res) => {
+  try {
+    const { model, contents, generationConfig } = req.body;
+
+    if (!model || !contents) {
+      return res.status(400).json({ success: false, message: 'model and contents are required' });
+    }
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) {
+      return res.status(500).json({ success: false, message: 'GEMINI_API_KEY not configured on server.' });
+    }
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+
+    const geminiRes = await fetchFn(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents, generationConfig }),
+    });
+
+    const data = await geminiRes.json();
+
+    if (!geminiRes.ok) {
+      const message = data?.error?.message || `Gemini API error (${geminiRes.status})`;
+      return res.status(geminiRes.status).json({ success: false, message });
+    }
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Gemini proxy error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Gemini proxy failed' });
+  }
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
