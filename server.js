@@ -1214,8 +1214,9 @@ app.post('/api/ai/gemini', async (req, res) => {
     // Model fallback chain — if primary is rate-limited, try the next one
     const modelChain = [
       model,
-      model === 'gemini-2.0-flash' ? 'gemini-1.5-flash' : null,
-      'gemini-1.5-flash-8b',
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-flash-latest',
     ].filter(Boolean).filter((m, i, arr) => arr.indexOf(m) === i); // dedupe
 
     const MAX_RETRIES = 3;
