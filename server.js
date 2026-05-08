@@ -1196,6 +1196,7 @@ function generateCollabInviteEmail(inviteeEmail, inviterName, projectName, role,
 /**
  * Gemini AI Proxy
  * Keeps the API key server-side so it is never exposed to the browser.
+ * Includes retry-with-backoff for 429 rate limit errors and model fallback.
  */
 app.post('/api/ai/gemini', async (req, res) => {
   try {
@@ -1210,22 +1211,74 @@ app.post('/api/ai/gemini', async (req, res) => {
       return res.status(500).json({ success: false, message: 'GEMINI_API_KEY not configured on server.' });
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+    // Model fallback chain — if primary is rate-limited, try the next one
+    const modelChain = [
+      model,
+      model === 'gemini-2.0-flash' ? 'gemini-1.5-flash' : null,
+      'gemini-1.5-flash-8b',
+    ].filter(Boolean).filter((m, i, arr) => arr.indexOf(m) === i); // dedupe
 
-    const geminiRes = await fetchFn(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents, generationConfig }),
-    });
+    const MAX_RETRIES = 3;
+    const BASE_DELAY_MS = 1500; // start at 1.5s, doubles each retry
 
-    const data = await geminiRes.json();
+    let lastError = null;
 
-    if (!geminiRes.ok) {
-      const message = data?.error?.message || `Gemini API error (${geminiRes.status})`;
-      return res.status(geminiRes.status).json({ success: false, message });
+    for (const candidateModel of modelChain) {
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${candidateModel}:generateContent?key=${geminiKey}`;
+
+          const geminiRes = await fetchFn(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents, generationConfig }),
+          });
+
+          const data = await geminiRes.json();
+
+          if (geminiRes.status === 429) {
+            // Rate limited — back off and retry (or move to next model after max retries)
+            lastError = data?.error?.message || 'Rate limit exceeded';
+            if (attempt < MAX_RETRIES) {
+              const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+              console.warn(`[Gemini] 429 on ${candidateModel} attempt ${attempt + 1}/${MAX_RETRIES + 1} — retrying in ${delay}ms`);
+              await new Promise(r => setTimeout(r, delay));
+              continue; // retry same model
+            }
+            // Exhausted retries on this model — try next in chain
+            console.warn(`[Gemini] Exhausted retries on ${candidateModel}, trying next model`);
+            break;
+          }
+
+          if (!geminiRes.ok) {
+            const message = data?.error?.message || `Gemini API error (${geminiRes.status})`;
+            return res.status(geminiRes.status).json({ success: false, message });
+          }
+
+          // Success — return with the model that actually responded
+          if (candidateModel !== model) {
+            console.log(`[Gemini] Responded via fallback model: ${candidateModel}`);
+          }
+          return res.json({ success: true, data, model: candidateModel });
+
+        } catch (fetchErr) {
+          lastError = fetchErr.message;
+          if (attempt < MAX_RETRIES) {
+            const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+      }
     }
 
-    res.json({ success: true, data });
+    // All models and retries exhausted
+    console.error('[Gemini] All models rate-limited or failed:', lastError);
+    return res.status(429).json({
+      success: false,
+      message: 'The AI service is currently busy. Please wait a moment and try again.',
+      retryAfter: 10,
+    });
+
   } catch (error) {
     console.error('Gemini proxy error:', error);
     res.status(500).json({ success: false, message: error.message || 'Gemini proxy failed' });
