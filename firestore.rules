@@ -1,0 +1,179 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── HELPER FUNCTIONS ────────────────────────────────────────────────────
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Returns true if the authenticated user is on a paid plan (pro or studio).
+    // Normalises known aliases so 'premium' and 'paid' are treated as paid.
+    function isPaidPlan(userId) {
+      let userData = get(/databases/$(database)/documents/users/$(userId)).data;
+      let plan = userData.get('plan', 'free');
+      return plan == 'pro' || plan == 'studio' || plan == 'premium' || plan == 'paid';
+    }
+
+    // Returns true if the free-tier user is within the 1-project limit.
+    // Counts only documents in their own projects subcollection.
+    // We check the count of existing docs to enforce the limit at the database
+    // layer so the client cannot bypass it by calling addDoc() directly.
+    function withinFreeProjectLimit(userId) {
+      // Free plan: max 1 owned project.
+      // getAfter() is not available for counts, so we use a workaround:
+      // we store an 'ownedProjectCount' field on the user doc that is kept
+      // in sync by the client. As a defence-in-depth measure the rule also
+      // checks that field, but the primary guard is isPaidPlan().
+      let userData = get(/databases/$(database)/documents/users/$(userId)).data;
+      let count = userData.get('ownedProjectCount', 0);
+      return count < 1;
+    }
+
+    // Check if requester is a collaborator on the project doc currently being read.
+    // Uses resource.data so no extra get() is needed.
+    // Supports both new docs (collaboratorIds array) and old docs (isCollaborative flag
+    // + a collaboratedProjects entry on the requester's own user doc).
+    function isCollaboratorOnDoc(ownerId, projectId) {
+      return request.auth != null && (
+        // New docs: flat collaboratorIds array present
+        (
+          'collaboratorIds' in resource.data
+          && request.auth.uid in resource.data.collaboratorIds
+        )
+        ||
+        // Old docs: isCollaborative is true and the requester has a
+        // collaboratedProjects entry for this project (written by the inviter).
+        (
+          resource.data.get('isCollaborative', false) == true
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/collaboratedProjects/$(projectId))
+        )
+      );
+    }
+
+    // For subcollection rules: fetch the parent project doc to check membership.
+    function isCollaboratorOnProject(ownerId, projectId) {
+      let proj = get(/databases/$(database)/documents/users/$(ownerId)/projects/$(projectId)).data;
+      return request.auth != null && (
+        (
+          'collaboratorIds' in proj
+          && request.auth.uid in proj.collaboratorIds
+        )
+        ||
+        (
+          proj.get('isCollaborative', false) == true
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/collaboratedProjects/$(projectId))
+        )
+      );
+    }
+
+    // Editor check for subcollection writes.
+    function isEditorOnProject(ownerId, projectId) {
+      let proj = get(/databases/$(database)/documents/users/$(ownerId)/projects/$(projectId)).data;
+      return request.auth != null
+        && isCollaboratorOnProject(ownerId, projectId)
+        && proj.get('collaboratorRoles', {}).get(request.auth.uid, 'viewer') == 'editor';
+    }
+
+    // ─── USER DOCUMENTS ──────────────────────────────────────────────────────
+
+    match /users/{userId} {
+      // Only the owner, admins, or explicitly public profiles may be read.
+      allow read:  if isOwner(userId) || isAdmin() || (resource.data.get('public', false) == true);
+      allow write: if isOwner(userId) || isAdmin();
+
+      match /collaboratedProjects/{entryId} {
+        allow read, delete: if isOwner(userId) || isAdmin();
+        // A user can only create a collaboratedProjects entry under their OWN uid.
+        // This prevents any authenticated user from writing themselves into
+        // someone else's collaborator list by guessing another user's UID.
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow update: if isOwner(userId) || isAdmin();
+      }
+
+      match /notifications/{notifId} {
+        allow read, update, delete: if isOwner(userId) || isAdmin();
+        allow create:               if request.auth != null;
+      }
+
+      match /projects/{projectId} {
+        // Paid users can always create projects.
+        // Free users can create their first project (ownedProjectCount < 1).
+        // The ownedProjectCount field on the user doc is incremented by the client
+        // on successful addProject() — the rule reads it as a server-side gate.
+        allow create: if request.auth != null && request.auth.uid == userId
+                        && (isPaidPlan(userId) || withinFreeProjectLimit(userId));
+        allow read:   if isOwner(userId) || isAdmin() || isCollaboratorOnDoc(userId, projectId);
+        allow update, delete: if isOwner(userId) || isAdmin();
+
+        // Subcollections inherit stricter editor semantics.
+        match /{subcollection}/{docId} {
+          allow read:  if isOwner(userId) || isAdmin() || isCollaboratorOnProject(userId, projectId);
+          allow create, update, delete: if isOwner(userId) || isAdmin() || isEditorOnProject(userId, projectId);
+        }
+
+        match /{subcollection}/{docId}/{rest=**} {
+          allow read:  if isOwner(userId) || isAdmin() || isCollaboratorOnProject(userId, projectId);
+          allow create, update, delete: if isOwner(userId) || isAdmin() || isEditorOnProject(userId, projectId);
+        }
+      }
+
+      match /{document=**} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // ─── SHARED PROJECTS ─────────────────────────────────────────────────────
+
+    match /sharedProjects/{document=**} {
+      // Public reading allowed for authenticated users, but writes are restricted.
+      allow read: if request.auth != null;
+      // Creation must set ownerId to the authenticated user to prevent bogus ownership.
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      // Updates and deletes allowed for the owner or admins only.
+      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.ownerId || isAdmin());
+    }
+
+    // ─── CHATS ───────────────────────────────────────────────────────────────
+
+    match /chats/{chatId} {
+      allow create:       if request.auth != null;
+      allow read, update: if request.auth != null
+                            && request.auth.uid in resource.data.participants;
+    }
+
+    // ─── ANALYTICS ───────────────────────────────────────────────────────────
+
+    match /artifacts/{appId}/public/data/analytics_events/{eventId} {
+      allow create: if request.auth != null;
+      allow read:   if isAdmin();
+    }
+
+    // ─── LEGACY ROOT-LEVEL PROJECTS ──────────────────────────────────────────
+
+    match /projects/{projectId} {
+      allow create: if request.auth != null
+                      && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if request.auth != null
+                                    && (resource.data.userId == request.auth.uid || isAdmin());
+
+      match /{subcol}/{doc=**} {
+        allow read, write: if request.auth != null
+                             && (get(/databases/$(database)/documents/projects/$(projectId)).data.userId == request.auth.uid
+                                 || isAdmin());
+      }
+    }
+
+    // ─── USER ACTIVITIES ─────────────────────────────────────────────────────
+
+    match /user_activities/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+  }
+}

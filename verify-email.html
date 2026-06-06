@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="icon" href="/assets/logo.png" type="image/png">
+  <title>Verify Email | PREP</title>
+  <link rel="stylesheet" href="auth.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Poppins:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="mobile-fixes.css">
+  <style>
+    /* OTP input row */
+    .otp-row {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin: 8px 0;
+    }
+
+    .otp-digit {
+      width: 52px;
+      height: 58px;
+      text-align: center;
+      font-size: 1.6rem;
+      font-weight: 700;
+      border-radius: 14px;
+      border: 1.5px solid var(--border-color);
+      background: var(--bg-input);
+      color: var(--color-text);
+      font-family: var(--font-main);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      padding: 0;
+      caret-color: var(--color-primary);
+    }
+
+    .otp-digit:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(90, 24, 154, 0.12);
+    }
+
+    body.dark .otp-digit:focus {
+      border-color: var(--color-secondary);
+      box-shadow: 0 0 0 3px rgba(255, 195, 0, 0.14);
+    }
+
+    .otp-digit.filled {
+      border-color: var(--color-primary);
+    }
+
+    body.dark .otp-digit.filled {
+      border-color: var(--color-secondary);
+    }
+
+    .verify-meta {
+      font-size: 0.88rem;
+      color: var(--color-soft-gray);
+      text-align: center;
+      line-height: 1.55;
+    }
+
+    .verify-meta strong {
+      color: var(--color-text);
+      word-break: break-all;
+    }
+
+    .resend-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.88rem;
+      color: var(--color-soft-gray);
+    }
+
+    #resendBtn {
+      background: none;
+      border: none;
+      font-family: var(--font-main);
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.2s ease;
+    }
+
+    #resendBtn:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+
+    #resendBtn:disabled {
+      color: var(--color-soft-gray);
+      cursor: default;
+    }
+
+    body.dark #resendBtn {
+      color: var(--color-secondary);
+    }
+
+    body.dark #resendBtn:disabled {
+      color: var(--color-soft-gray);
+    }
+
+    @media (max-width: 400px) {
+      .otp-digit {
+        width: 42px;
+        height: 50px;
+        font-size: 1.3rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    if (localStorage.getItem("darkMode") === "on") document.body.classList.add("dark");
+  </script>
+
+  <div class="container">
+    <h1 class="logo">PREP</h1>
+
+    <div class="form-box">
+      <div class="step-header" style="text-align:center;">
+        <h2>Check your email</h2>
+        <p id="verifySubtitle">We sent a 6-digit code to your email address.</p>
+      </div>
+
+      <p class="verify-meta" id="verifyEmail"></p>
+
+      <div class="otp-row" role="group" aria-label="6-digit verification code">
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-index="0" aria-label="Digit 1" autocomplete="off" />
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-index="1" aria-label="Digit 2" autocomplete="off" />
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-index="2" aria-label="Digit 3" autocomplete="off" />
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-index="3" aria-label="Digit 4" autocomplete="off" />
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-index="4" aria-label="Digit 5" autocomplete="off" />
+        <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-index="5" aria-label="Digit 6" autocomplete="off" />
+      </div>
+
+      <button type="button" id="verifyBtn" class="btn btn--primary" disabled>Verify Email</button>
+
+      <p id="verifyMessage" class="message"></p>
+
+      <div class="resend-row">
+        <span id="countdownText"></span>
+        <button type="button" id="resendBtn" disabled>Resend code</button>
+      </div>
+
+      <p class="link-text" style="text-align:center;margin-top:8px;">
+        Wrong account? <a href="signup.html">Start over</a>
+      </p>
+    </div>
+  </div>
+
+  <script type="module" src="verify-email.js"></script>
+</body>
+</html>
