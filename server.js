@@ -40,6 +40,11 @@ const {
 
 const app = express();
 
+// Trust the first proxy hop (Render's load balancer sets X-Forwarded-For).
+// Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and cannot correctly identify clients by IP.
+app.set('trust proxy', 1);
+
 // CORS Configuration - Allow requests from frontend and handle preflight
 const corsOptions = {
   origin: function (origin, callback) {
@@ -329,96 +334,130 @@ app.post('/api/password-reset', async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email is required'
-      });
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ success: false, error: 'Email is required' });
     }
 
-    if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON || !admin) {
-      console.error('Firebase Admin SDK not configured for password reset');
-      return res.status(503).json({
-        success: false,
-        error: 'Password reset service unavailable'
-      });
+    // Basic email format check before hitting Firebase
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
     }
 
     if (!BREVO_API_KEY) {
       console.error('BREVO_API_KEY not configured in environment variables');
-      return res.status(500).json({
-        success: false,
-        error: 'Email service not configured'
-      });
+      return res.status(500).json({ success: false, error: 'Email service not configured' });
     }
 
-    let resetLink;
-    try {
-      resetLink = await admin.auth().generatePasswordResetLink(email, {
-        url: RESET_PAGE_URL,
-        handleCodeInApp: false
-      });
-    } catch (error) {
-      console.error('Firebase password reset link generation failed:', error);
-      if (error.code === 'auth/user-not-found') {
-        return res.status(404).json({
-          success: false,
-          error: 'No account found with that email'
+    // ── Path A: Firebase Admin SDK is available — generate a direct reset link ──
+    if (admin && db) {
+      let resetLink;
+      try {
+        resetLink = await admin.auth().generatePasswordResetLink(email.trim(), {
+          url: RESET_PAGE_URL,
+          handleCodeInApp: false
         });
-      }
-      return res.status(500).json({
-        success: false,
-        error: 'Unable to generate password reset link'
-      });
-    }
-
-    const emailResponse = await fetchFn(`${BREVO_API_URL}/smtp/email`, {
-      method: 'POST',
-      headers: {
-        'api-key': BREVO_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        to: [
-          {
-            email: email,
-            name: email
-          }
-        ],
-        sender: {
-          name: 'PREP - Cinematic Pre-production',
-          email: 'noreply@prepapp.name.ng'
-        },
-        subject: 'Reset your PREP password',
-        htmlContent: generatePasswordResetEmailHTML(resetLink),
-        replyTo: {
-          email: 'info@prepapp.name.ng',
-          name: 'PREP Support'
+      } catch (firebaseError) {
+        console.error('Firebase password reset link generation failed:', firebaseError);
+        if (firebaseError.code === 'auth/user-not-found') {
+          return res.status(404).json({ success: false, error: 'No account found with that email' });
         }
-      })
-    });
+        if (firebaseError.code === 'auth/invalid-email') {
+          return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+        }
+        // Fall through to Path B if Admin SDK call fails for any other reason
+        console.warn('Admin SDK link generation failed — falling back to Firebase REST API');
+        return sendPasswordResetViaRestApi(email.trim(), res);
+      }
 
-    if (!emailResponse.ok) {
-      const error = await emailResponse.json();
-      console.error('Brevo password reset email failed:', error);
-      throw new Error(`Failed to send email: ${error.message || 'Unknown error'}`);
+      // Send the direct link via Brevo
+      const emailResponse = await fetchFn(`${BREVO_API_URL}/smtp/email`, {
+        method: 'POST',
+        headers: { 'api-key': BREVO_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: [{ email: email.trim(), name: email.trim() }],
+          sender: { name: 'PREP - Cinematic Pre-production', email: 'noreply@prepapp.name.ng' },
+          subject: 'Reset your PREP password',
+          htmlContent: generatePasswordResetEmailHTML(resetLink),
+          replyTo: { email: 'info@prepapp.name.ng', name: 'PREP Support' }
+        })
+      });
+
+      if (!emailResponse.ok) {
+        const err = await emailResponse.json().catch(() => ({}));
+        console.error('Brevo password reset email failed:', err);
+        throw new Error(`Failed to send email: ${err.message || 'Unknown error'}`);
+      }
+
+      const emailResult = await emailResponse.json();
+      return res.json({ success: true, message: 'Password reset email sent successfully', messageId: emailResult.messageId });
     }
 
-    const emailResult = await emailResponse.json();
+    // ── Path B: Admin SDK not initialised — trigger via Firebase Auth REST API ──
+    // The REST API sends Firebase's own reset email, which is less branded but
+    // always works without a service account key.
+    console.warn('Firebase Admin SDK not configured — using Firebase Auth REST API for password reset');
+    return sendPasswordResetViaRestApi(email.trim(), res);
 
-    res.json({
-      success: true,
-      message: 'Password reset email sent successfully',
-      messageId: emailResult.messageId
-    });
   } catch (error) {
-    console.error('Error in password reset email:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to send password reset email'
-    });
+    console.error('Error in password reset:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to send password reset email' });
   }
 });
+
+/**
+ * Fallback password reset using the Firebase Auth REST API.
+ * This does NOT require the Admin SDK / FIREBASE_SERVICE_ACCOUNT_JSON.
+ * Firebase sends its own default reset email directly to the user.
+ * Requires FIREBASE_API_KEY to be set in environment variables.
+ */
+async function sendPasswordResetViaRestApi(email, res) {
+  const firebaseApiKey = process.env.FIREBASE_API_KEY;
+  if (!firebaseApiKey) {
+    console.error('Neither Firebase Admin SDK nor FIREBASE_API_KEY is configured');
+    return res.status(503).json({
+      success: false,
+      error: 'Password reset service unavailable. Please contact support at info@prepapp.name.ng'
+    });
+  }
+
+  try {
+    const resetResponse = await fetchFn(
+      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${firebaseApiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestType: 'PASSWORD_RESET',
+          email,
+          continueUrl: `${APP_URL}/login.html`
+        })
+      }
+    );
+
+    const data = await resetResponse.json();
+
+    if (!resetResponse.ok) {
+      const code = data?.error?.message || '';
+      if (code === 'EMAIL_NOT_FOUND' || code === 'USER_NOT_FOUND') {
+        return res.status(404).json({ success: false, error: 'No account found with that email' });
+      }
+      if (code === 'INVALID_EMAIL') {
+        return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+      }
+      if (code === 'TOO_MANY_ATTEMPTS_TRY_LATER') {
+        return res.status(429).json({ success: false, error: 'Too many attempts. Please wait a few minutes and try again.' });
+      }
+      console.error('Firebase REST password reset error:', data);
+      return res.status(500).json({ success: false, error: 'Unable to send password reset email. Please try again.' });
+    }
+
+    return res.json({ success: true, message: 'Password reset email sent successfully' });
+
+  } catch (err) {
+    console.error('Firebase REST password reset fetch error:', err);
+    return res.status(500).json({ success: false, error: 'Unable to send password reset email. Please try again.' });
+  }
+}
 
 function generatePasswordResetEmailHTML(resetLink) {
   return `
@@ -1486,6 +1525,52 @@ app.post('/api/ai/gemini', verifyFirebaseToken, async (req, res) => {
 });
 
 /**
+ * GET /api/reference/tmdb/search
+ * Uses a server-side TMDB API key so the client does not expose secrets.
+ * Returns movie/documentary search results with poster URLs.
+ */
+app.get('/api/reference/tmdb/search', verifyFirebaseToken, async (req, res) => {
+  const query = String(req.query.q || '').trim();
+  if (!query) {
+    return res.status(400).json({ success: false, message: 'Missing search query' });
+  }
+
+  const tmdbKey = process.env.TMDB_API_KEY;
+  if (!tmdbKey) {
+    return res.status(500).json({ success: false, message: 'TMDB_API_KEY not configured on server.' });
+  }
+
+  try {
+    const tmdbUrl = `https://api.themoviedb.org/3/search/movie?api_key=${encodeURIComponent(tmdbKey)}&query=${encodeURIComponent(query)}&include_adult=false&language=en-US&page=1`;
+    const tmdbResp = await fetchFn(tmdbUrl);
+    const payload = await tmdbResp.json();
+
+    if (!tmdbResp.ok) {
+      return res.status(502).json({ success: false, message: payload.status_message || 'TMDB lookup failed' });
+    }
+
+    const results = (payload.results || []).slice(0, 12).map(movie => ({
+      id: movie.id,
+      title: movie.title || movie.original_title || 'Untitled',
+      overview: movie.overview || '',
+      releaseDate: movie.release_date || '',
+      posterPath: movie.poster_path || null,
+      backdropPath: movie.backdrop_path || null,
+      tmdbUrl: `https://www.themoviedb.org/movie/${movie.id}`,
+    })).map(movie => ({
+      ...movie,
+      posterUrl: movie.posterPath ? `https://image.tmdb.org/t/p/w500${movie.posterPath}` : null,
+      backdropUrl: movie.backdropPath ? `https://image.tmdb.org/t/p/w780${movie.backdropPath}` : null,
+    }));
+
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('[TMDB Search]', error);
+    res.status(500).json({ success: false, message: 'Unable to fetch TMDB references.' });
+  }
+});
+
+/**
  * ===== SUBSCRIPTION MANAGEMENT ENDPOINTS =====
  * Complete implementation of subscription lifecycle
  */
@@ -1816,9 +1901,13 @@ app.post('/api/cloudinary/sign', verifyFirebaseToken, (req, res) => {
 
   const timestamp = Math.round(Date.now() / 1000);
   const folder = `prep/${req.firebaseUser.uid}`; // scope uploads per user
+  const resourceType = req.body?.resourceType || 'image';
 
   // Build the string to sign — must match what the Cloudinary SDK expects
-  const paramsToSign = `folder=${folder}&timestamp=${timestamp}`;
+  let paramsToSign = `folder=${folder}&timestamp=${timestamp}`;
+  if (resourceType && resourceType !== 'image') {
+    paramsToSign += `&resource_type=${resourceType}`;
+  }
   const signature = crypto
     .createHash('sha256')
     .update(paramsToSign + apiSecret)
