@@ -21,6 +21,58 @@ function createPaymentRouter({ admin, db }) {
   const router = express.Router();
   const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
   const APP_URL = process.env.APP_URL || 'https://prepapp.name.ng';
+  const BREVO_API_KEY = process.env.BREVO_API_KEY;
+  const BREVO_API_URL = 'https://api.brevo.com/v3';
+
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+
+  /**
+   * Normalize plan strings: strip billing-period suffixes and apply aliases.
+   * e.g. "pro-monthly" → "pro", "studio-yearly" → "studio", "premium" → "pro"
+   */
+  function normalizePlan(raw) {
+    if (!raw) return 'pro';
+    const aliases = { premium: 'pro', paid: 'pro' };
+    const base = raw.toLowerCase().replace(/-(monthly|yearly|annual)$/, '');
+    return aliases[base] || base;
+  }
+
+  /**
+   * Send payment confirmation email via Brevo (non-blocking — never fails the request).
+   */
+  async function sendPaymentConfirmationEmail(email, fullName, plan, amount) {
+    if (!BREVO_API_KEY || !email) return;
+    const planLabel = plan === 'studio' ? 'Studio' : 'Pro';
+    try {
+      await fetch(`${BREVO_API_URL}/smtp/email`, {
+        method: 'POST',
+        headers: { 'api-key': BREVO_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: [{ email, name: fullName || email }],
+          sender: { name: 'PREP - Cinematic Pre-production', email: 'noreply@prepapp.name.ng' },
+          subject: `🎉 Welcome to PREP ${planLabel}!`,
+          htmlContent: `
+            <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+              <h1 style="color:#28a745;">✅ Payment Successful!</h1>
+              <p>Hi <strong>${fullName || 'there'}</strong>,</p>
+              <p>Your PREP <strong>${planLabel}</strong> subscription is now active. Amount charged: <strong>${amount || ''}</strong></p>
+              <p>You now have full access to all ${planLabel} features.</p>
+              <a href="https://prepapp.name.ng/dashboard.html"
+                 style="display:inline-block;padding:12px 28px;background:#ff6500;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">
+                Go to Dashboard
+              </a>
+              <p style="margin-top:20px;color:#666;font-size:12px;">
+                Questions? <a href="https://prepapp.name.ng/contactsupport.html">Contact support</a>
+              </p>
+            </div>`,
+          replyTo: { email: 'info@prepapp.name.ng', name: 'PREP Support' }
+        })
+      });
+      console.log(`✅ Payment confirmation email sent to ${email}`);
+    } catch (err) {
+      console.warn('Payment confirmation email failed (non-fatal):', err.message);
+    }
+  }
 
   function verifyFirebaseToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -51,7 +103,7 @@ function createPaymentRouter({ admin, db }) {
       const email = req.user.email;
       const fullName = req.user.name || req.user.email;
       
-      const { amount, planType } = req.body;
+      const { amount, planType, currency } = req.body;
 
       if (!amount || !planType) {
         return res.status(400).json({
@@ -59,6 +111,12 @@ function createPaymentRouter({ admin, db }) {
           message: 'Missing required fields'
         });
       }
+
+      // Validate currency — must be a 3-letter ISO code. Defaults to USD.
+      const CURRENCY_PATTERN = /^[A-Z]{3}$/;
+      const resolvedCurrency = (typeof currency === 'string' && CURRENCY_PATTERN.test(currency))
+        ? currency
+        : 'USD';
 
       if (!FLUTTERWAVE_SECRET_KEY) {
         console.error('FLUTTERWAVE_SECRET_KEY not configured');
@@ -71,7 +129,9 @@ function createPaymentRouter({ admin, db }) {
       // Validate planType before embedding in meta so arbitrary strings cannot
       // be written into Firestore via the webhook or verify endpoint.
       const ALLOWED_PLANS = ['pro', 'studio'];
-      if (!ALLOWED_PLANS.includes(planType)) {
+      // Normalize first (strip billing-period suffixes like "pro-monthly")
+      const normalizedPlanType = normalizePlan(planType);
+      if (!ALLOWED_PLANS.includes(normalizedPlanType)) {
         return res.status(400).json({ success: false, message: 'Invalid plan type' });
       }
 
@@ -88,7 +148,7 @@ function createPaymentRouter({ admin, db }) {
         body: JSON.stringify({
           tx_ref: txRef,
           amount,
-          currency: 'USD',
+          currency: resolvedCurrency,
           payment_options: 'card,ussd,account,credit_topup,apple_pay,google_pay',
           customer: {
             email,
@@ -101,7 +161,7 @@ function createPaymentRouter({ admin, db }) {
           meta: {
             // userId set by the server from the verified token — not client-supplied
             userId,
-            planType
+            planType: normalizedPlanType
           },
           redirect_url: `${APP_URL}/payment-success.html`
         })
@@ -117,6 +177,18 @@ function createPaymentRouter({ admin, db }) {
           txRef
         });
       }
+
+      // Log the full Flutterwave response so we can diagnose the exact failure
+      console.error('Flutterwave payment init failed:', JSON.stringify({
+        httpStatus: response.status,
+        flwStatus: data.status,
+        flwMessage: data.message,
+        flwData: data.data,
+        txRef,
+        resolvedCurrency,
+        normalizedPlanType,
+        amount
+      }));
 
       return res.status(400).json({
         success: false,
@@ -169,10 +241,9 @@ function createPaymentRouter({ admin, db }) {
         return res.status(500).json({ success: false, message: 'Database not configured' });
       }
 
-      // Normalize plan aliases (premium/paid → pro) before persisting
+      // Normalize plan aliases (premium/paid → pro) and strip billing-period suffixes before persisting
       const rawPlanType = data.data?.meta?.planType || 'pro';
-      const planAliases = { premium: 'pro', paid: 'pro' };
-      const planType = planAliases[rawPlanType.toLowerCase()] || rawPlanType.toLowerCase();
+      const planType = normalizePlan(rawPlanType);
 
       const subscriptionId = data.data?.id;
       const email = data.data?.customer?.email || null;
@@ -196,6 +267,10 @@ function createPaymentRouter({ admin, db }) {
         console.error('Firestore update failed during payment verification:', dbError);
         return res.status(500).json({ success: false, message: 'Failed to update subscription record' });
       }
+
+      // Send payment confirmation email (non-blocking)
+      sendPaymentConfirmationEmail(email, fullName, planType, data.data?.amount)
+        .catch(err => console.warn('Verify: confirmation email failed:', err.message));
 
       return res.json({
         success: true,
