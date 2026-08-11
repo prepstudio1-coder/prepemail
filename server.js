@@ -1137,11 +1137,11 @@ function generateCollabInviteEmail(inviteeEmail, inviterName, projectName, role,
       <div class="wrapper">
         <div class="header">
           <h1>You're Invited to PREP</h1>
-          <p>Cinematic Pre-production Platform</p>
+          <p>Production Workspace for Filmmakers</p>
         </div>
         <div class="body">
           <p>Hi there,</p>
-          <p><strong>${inviterName}</strong> has invited you to collaborate on their project on <strong>PREP</strong> — the cinematic pre-production platform for filmmakers.</p>
+          <p><strong>${inviterName}</strong> has invited you to collaborate on their project on <strong>PREP</strong> — the production workspace for filmmakers.</p>
           <div class="project-card">
             <div class="label">Project</div>
             <div class="name">${projectName}</div>
@@ -1983,7 +1983,7 @@ app.post('/api/send-invite', verifyFirebaseToken, async (req, res) => {
           <div style="padding:32px;">
             <p style="color:#444;font-size:15px;line-height:1.7;">Hi <strong>${recipientName}</strong>,</p>
             <p style="color:#444;font-size:15px;line-height:1.7;">
-              <strong>${inviterName}</strong> is inviting you to join <strong>PREP</strong> — the cinematic pre-production platform for filmmakers.
+              <strong>${inviterName}</strong> is inviting you to join <strong>PREP</strong> — the production workspace for filmmakers.
             </p>
             <div style="text-align:center;margin:28px 0;">
               <a href="${safeLink}" style="display:inline-block;background:#ff6500;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;">
