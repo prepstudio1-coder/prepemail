@@ -42,7 +42,9 @@ function createPaymentRouter({ admin, db }) {
    */
   async function sendPaymentConfirmationEmail(email, fullName, plan, amount) {
     if (!BREVO_API_KEY || !email) return;
-    const planLabel = plan === 'studio' ? 'Studio' : 'Pro';
+    const { generatePaymentConfirmationEmail } = require('./email-templates');
+    const safePlan  = (plan === 'studio') ? 'studio' : 'pro';
+    const planLabel = safePlan === 'studio' ? 'Studio' : 'Pro';
     try {
       await fetch(`${BREVO_API_URL}/smtp/email`, {
         method: 'POST',
@@ -50,21 +52,8 @@ function createPaymentRouter({ admin, db }) {
         body: JSON.stringify({
           to: [{ email, name: fullName || email }],
           sender: { name: 'PREP - Cinematic Pre-production', email: 'noreply@prepapp.name.ng' },
-          subject: `🎉 Welcome to PREP ${planLabel}!`,
-          htmlContent: `
-            <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-              <h1 style="color:#28a745;">✅ Payment Successful!</h1>
-              <p>Hi <strong>${fullName || 'there'}</strong>,</p>
-              <p>Your PREP <strong>${planLabel}</strong> subscription is now active. Amount charged: <strong>${amount || ''}</strong></p>
-              <p>You now have full access to all ${planLabel} features.</p>
-              <a href="https://prepapp.name.ng/dashboard.html"
-                 style="display:inline-block;padding:12px 28px;background:#ff6500;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">
-                Go to Dashboard
-              </a>
-              <p style="margin-top:20px;color:#666;font-size:12px;">
-                Questions? <a href="https://prepapp.name.ng/contactsupport.html">Contact support</a>
-              </p>
-            </div>`,
+          subject: `You're on PREP ${planLabel}! 🎬`,
+          htmlContent: generatePaymentConfirmationEmail(fullName || 'Filmmaker', safePlan, amount),
           replyTo: { email: 'info@prepapp.name.ng', name: 'PREP Support' }
         })
       });
@@ -135,6 +124,10 @@ function createPaymentRouter({ admin, db }) {
         return res.status(400).json({ success: false, message: 'Invalid plan type' });
       }
 
+      // Detect billing cycle from the raw planType string (e.g. "pro-yearly")
+      const billingCycle = /yearly|annual/i.test(planType) ? 'yearly' : 'monthly';
+      const cycleLabel   = billingCycle === 'yearly' ? 'Annual' : 'Monthly';
+
       // Embed userId (server-sourced from the verified token) so the webhook can
       // identify the correct user even when the redirect/verify flow is bypassed.
       const txRef = `PREP-${userId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -156,12 +149,13 @@ function createPaymentRouter({ admin, db }) {
           },
           customizations: {
             title: 'PREP Pro Subscription',
-            description: `Monthly subscription - ${planType.toUpperCase()} plan`
+            description: `${cycleLabel} subscription - ${normalizedPlanType.toUpperCase()} plan`
           },
           meta: {
             // userId set by the server from the verified token — not client-supplied
             userId,
-            planType: normalizedPlanType
+            planType: normalizedPlanType,
+            billingCycle,
           },
           redirect_url: `${APP_URL}/payment-success.html`
         })
@@ -269,8 +263,14 @@ function createPaymentRouter({ admin, db }) {
       }
 
       // Send payment confirmation email (non-blocking)
-      sendPaymentConfirmationEmail(email, fullName, planType, data.data?.amount)
-        .catch(err => console.warn('Verify: confirmation email failed:', err.message));
+      sendPaymentConfirmationEmail(
+        email,
+        fullName,
+        planType,
+        data.data?.amount,
+        data.data?.meta?.currency || 'USD',
+        data.data?.meta?.billingCycle
+      ).catch(err => console.warn('Verify: confirmation email failed:', err.message));
 
       return res.json({
         success: true,
