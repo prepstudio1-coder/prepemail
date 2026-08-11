@@ -1240,6 +1240,180 @@ async function checkAndIncrementAIUsage(uid) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// OpenRouter fallback helper
+// Called when all Gemini models are exhausted. Uses the OpenAI-compatible
+// Chat Completions API with free models (IDs ending in :free).
+// Docs: https://openrouter.ai/docs
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Free models available on OpenRouter — ordered by quality / context length.
+// All IDs end in :free which means $0/token (rate-limited, not credit-limited).
+const OPENROUTER_FREE_MODELS = [
+  'meta-llama/llama-4-scout:free',
+  'meta-llama/llama-4-maverick:free',
+  'google/gemma-3-27b-it:free',
+  'qwen/qwen3-235b-a22b:free',
+  'mistralai/mistral-7b-instruct:free',
+  'microsoft/phi-4-reasoning:free',
+];
+
+/**
+ * Convert Gemini-style `contents` array to OpenAI-style `messages` array.
+ * Gemini:    [{ role: 'user', parts: [{ text: '...' }] }]
+ * OpenAI:    [{ role: 'user', content: '...' }]
+ * If a system_instruction is provided it becomes the first system message.
+ */
+function geminiContentsToOpenAIMessages(contents, system_instruction) {
+  const messages = [];
+  if (system_instruction) {
+    const sysText = Array.isArray(system_instruction.parts)
+      ? system_instruction.parts.map(p => p.text || '').join('\n')
+      : (system_instruction.text || String(system_instruction));
+    if (sysText.trim()) messages.push({ role: 'system', content: sysText });
+  }
+  for (const c of (contents || [])) {
+    const role = c.role === 'model' ? 'assistant' : (c.role || 'user');
+    const content = Array.isArray(c.parts)
+      ? c.parts.map(p => p.text || '').join('')
+      : (c.content || '');
+    if (content.trim()) messages.push({ role, content });
+  }
+  return messages;
+}
+
+/**
+ * Call OpenRouter with the given messages, trying free models in order.
+ * Returns the response text string, or throws if all models fail.
+ */
+async function callOpenRouterFallback(contents, generationConfig, system_instruction) {
+  const orKey = process.env.OPENROUTER_API_KEY;
+  if (!orKey) throw new Error('OPENROUTER_API_KEY not configured');
+
+  const messages = geminiContentsToOpenAIMessages(contents, system_instruction);
+  const maxTokens = generationConfig?.maxOutputTokens || 2048;
+  const temperature = generationConfig?.temperature ?? 0.85;
+
+  let lastErr;
+  for (const model of OPENROUTER_FREE_MODELS) {
+    try {
+      const res = await fetchFn('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${orKey}`,
+          'HTTP-Referer': process.env.APP_URL || 'https://prepapp.name.ng',
+          'X-Title': 'PREP Workspace',
+        },
+        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature }),
+      });
+
+      if (res.status === 429 || res.status === 503) {
+        console.warn(`[OpenRouter] ${res.status} on ${model}, trying next`);
+        lastErr = `${model} rate-limited (${res.status})`;
+        continue;
+      }
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const msg = data?.error?.message || `OpenRouter error (${res.status})`;
+        console.warn(`[OpenRouter] Error on ${model}: ${msg}`);
+        lastErr = msg;
+        continue;
+      }
+
+      const text = data?.choices?.[0]?.message?.content || '';
+      if (!text.trim()) { lastErr = 'Empty response'; continue; }
+
+      console.log(`[OpenRouter] Responded via ${model}`);
+      return text;
+    } catch (e) {
+      lastErr = e.message;
+      console.warn(`[OpenRouter] Fetch error on ${model}:`, e.message);
+    }
+  }
+  throw new Error(`OpenRouter fallback failed: ${lastErr}`);
+}
+
+/**
+ * Stream OpenRouter response as SSE chunks into an already-open res stream.
+ * Uses the same sendEvent(data) helper pattern as the Gemini stream proxy.
+ */
+async function streamOpenRouterFallback(contents, generationConfig, system_instruction, sendEvent) {
+  const orKey = process.env.OPENROUTER_API_KEY;
+  if (!orKey) throw new Error('OPENROUTER_API_KEY not configured');
+
+  const messages = geminiContentsToOpenAIMessages(contents, system_instruction);
+  const maxTokens = generationConfig?.maxOutputTokens || 2048;
+  const temperature = generationConfig?.temperature ?? 0.85;
+
+  let lastErr;
+  for (const model of OPENROUTER_FREE_MODELS) {
+    try {
+      const res = await fetchFn('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${orKey}`,
+          'HTTP-Referer': process.env.APP_URL || 'https://prepapp.name.ng',
+          'X-Title': 'PREP Workspace',
+        },
+        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature, stream: true }),
+      });
+
+      if (res.status === 429 || res.status === 503) {
+        console.warn(`[OpenRouter Stream] ${res.status} on ${model}, trying next`);
+        lastErr = `${model} rate-limited`;
+        continue;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        lastErr = errData?.error?.message || `OpenRouter error (${res.status})`;
+        console.warn(`[OpenRouter Stream] Error on ${model}: ${lastErr}`);
+        continue;
+      }
+
+      // Read OpenAI-style SSE stream and re-emit as PREP SSE chunks
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let hasChunks = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const raw = trimmed.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(raw);
+            const chunk = parsed?.choices?.[0]?.delta?.content;
+            if (chunk) { sendEvent({ chunk }); hasChunks = true; }
+          } catch (_) { /* ignore malformed */ }
+        }
+      }
+
+      if (hasChunks) {
+        console.log(`[OpenRouter Stream] Completed via ${model}`);
+        sendEvent({ done: true, model });
+        return; // success
+      }
+      lastErr = 'Empty stream response';
+    } catch (e) {
+      lastErr = e.message;
+      console.warn(`[OpenRouter Stream] Fetch error on ${model}:`, e.message);
+    }
+  }
+  throw new Error(`OpenRouter stream fallback failed: ${lastErr}`);
+}
+
 /**
  * Gemini AI Proxy
  * Keeps the API key server-side so it is never exposed to the browser.
@@ -1278,9 +1452,9 @@ app.post('/api/ai/gemini', verifyFirebaseToken, async (req, res) => {
     // Model fallback chain — if primary is rate-limited, try the next one
     const modelChain = [
       model,
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
-      'gemini-1.5-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-pro',
     ].filter(Boolean).filter((m, i, arr) => arr.indexOf(m) === i); // dedupe
 
     const MAX_RETRIES = 3;
@@ -1326,6 +1500,13 @@ app.post('/api/ai/gemini', verifyFirebaseToken, async (req, res) => {
 
           if (!geminiRes.ok) {
             const message = data?.error?.message || `Gemini API error (${geminiRes.status})`;
+            // Deprecation / model-not-found → skip to next model instead of hard-failing
+            const isModelError = geminiRes.status === 404 ||
+              message.includes('no longer available') || message.includes('not found') || message.includes('deprecated');
+            if (isModelError) {
+              console.warn(`[Gemini] Model error on ${candidateModel}: ${message} — trying next`);
+              break; // break inner retry loop, try next model
+            }
             return res.status(geminiRes.status).json({ success: false, message });
           }
 
@@ -1345,8 +1526,22 @@ app.post('/api/ai/gemini', verifyFirebaseToken, async (req, res) => {
       }
     }
 
-    // All models and retries exhausted
-    console.error('[Gemini] All models rate-limited or failed:', lastError);
+    // All Gemini models exhausted — try OpenRouter as last resort
+    console.warn('[Gemini] All models rate-limited or failed, trying OpenRouter fallback...');
+    try {
+      const text = await callOpenRouterFallback(contents, generationConfig, system_instruction);
+      // Wrap in Gemini-shaped response so the client doesn't need to know
+      return res.json({
+        success: true,
+        model: 'openrouter-fallback',
+        data: {
+          candidates: [{ content: { parts: [{ text }] } }],
+        },
+      });
+    } catch (orErr) {
+      console.error('[OpenRouter] Fallback also failed:', orErr.message);
+    }
+
     return res.status(429).json({
       success: false,
       message: 'The AI service is currently busy. Please wait a moment and try again.',
@@ -1395,9 +1590,9 @@ app.post('/api/ai/gemini/stream', verifyFirebaseToken, async (req, res) => {
     // Model fallback chain
     const modelChain = [
       model,
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
-      'gemini-1.5-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-pro',
     ].filter(Boolean).filter((m, i, arr) => arr.indexOf(m) === i);
 
     // Set up SSE headers
@@ -1436,8 +1631,15 @@ app.post('/api/ai/gemini/stream', verifyFirebaseToken, async (req, res) => {
 
         if (!geminiRes.ok) {
           const errData = await geminiRes.json().catch(() => ({}));
-          const message = errData?.error?.message || `Gemini API error (${geminiRes.status})`;
-          sendEvent({ error: true, message });
+          const errMsg = errData?.error?.message || `Gemini API error (${geminiRes.status})`;
+          // For deprecation / model-not-found errors, try next model instead of aborting
+          const isModelError = geminiRes.status === 404 ||
+            (errMsg.includes('no longer available') || errMsg.includes('not found') || errMsg.includes('deprecated'));
+          if (isModelError) {
+            console.warn(`[Gemini Stream] Model error on ${candidateModel}: ${errMsg} — trying next`);
+            continue;
+          }
+          sendEvent({ error: true, message: errMsg });
           return res.end();
         }
 
@@ -1479,7 +1681,15 @@ app.post('/api/ai/gemini/stream', verifyFirebaseToken, async (req, res) => {
       }
     }
 
-    // All models failed
+    // All Gemini models failed — try OpenRouter as last resort (streams SSE too)
+    console.warn('[Gemini Stream] All models failed, trying OpenRouter fallback...');
+    try {
+      await streamOpenRouterFallback(contents, generationConfig, system_instruction, sendEvent);
+      return res.end();
+    } catch (orErr) {
+      console.error('[OpenRouter Stream] Fallback also failed:', orErr.message);
+    }
+
     sendEvent({ error: true, message: 'The AI service is currently busy. Please try again.' });
     res.end();
 
