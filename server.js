@@ -459,116 +459,37 @@ async function sendPasswordResetViaRestApi(email, res) {
   }
 }
 
-function generatePasswordResetEmailHTML(resetLink) {
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Reset your PREP password</title>
-    </head>
-    <body style="margin:0; padding:0; background:#0f172a; font-family:Arial, sans-serif; color:#f8fafc;">
-        <div style="max-width:640px; margin:0 auto; padding:24px;">
-            <div style="background:#020617; border:1px solid #1e293b; border-radius:16px; padding:24px;">
-                <h1 style="margin:0 0 12px; font-size:24px; color:#f59e0b;">Reset your PREP password</h1>
-                <p style="margin:0 0 16px; line-height:1.5; color:#d0d6e2;">
-                    We received a request to reset the password for your PREP account. Click the button below to create a new password.
-                </p>
-                <div style="text-align:center; margin:24px 0;">
-                    <a href="${resetLink}" style="display:inline-block; background:#f59e0b; color:#020617; text-decoration:none; padding:12px 18px; border-radius:999px; font-weight:700;">Reset password</a>
-                </div>
-                <p style="margin:0; line-height:1.5; color:#94a3b8; font-size:12px;">
-                    If you didn’t request this, you can ignore this email. The link will expire soon.
-                </p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
-}
+
+// ─── Email Templates ──────────────────────────────────────────────────────────
+// All branded HTML templates live in email-templates.js.
+const {
+  generateWelcomeEmailHTML,
+  generatePasswordResetEmailHTML,
+  generatePaymentConfirmationEmail,
+} = require('./email-templates');
 
 /**
- * Generate HTML content for welcome email
+ * Send payment confirmation email via Brevo.
+ * Non-blocking — logs errors but never throws so payment flow is unaffected.
+ *
+ * @param {string} email
+ * @param {string} fullName
+ * @param {'pro'|'studio'} plan
+ * @param {number|string} amount        - raw amount from Flutterwave
+ * @param {string} [transactionId]
+ * @param {string} [currency]           - ISO code e.g. 'USD' or 'NGN'
+ * @param {string} [billingCycle]       - 'monthly' | 'yearly'
  */
-function generateWelcomeEmailHTML(fullName, accountType) {
-  const accountTypeDisplay = accountType === 'company' ? 'Company' : 'Individual';
-  
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to PREP</title>
-        <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { text-align: center; padding: 20px 0; border-bottom: 2px solid #007bff; margin-bottom: 30px; }
-            .header h1 { color: #007bff; margin: 0; font-size: 28px; }
-            .content { padding: 20px 0; }
-            .content h2 { color: #333; font-size: 20px; }
-            .content p { margin: 10px 0; }
-            .features { margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #007bff; }
-            .features li { margin: 8px 0; }
-            .cta-button { display: inline-block; margin: 20px 0; padding: 12px 30px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
-            .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #666; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>Welcome to PREP!</h1>
-            </div>
-            
-            <div class="content">
-                <p>Hi <strong>${fullName}</strong>,</p>
-                
-                <p>Thank you for joining PREP - the ultimate cinematic pre-production operating system. Your ${accountTypeDisplay} account has been successfully created.</p>
-                
-                <h2>Get Started</h2>
-                <p>Your account is ready to use. Here's what you can do:</p>
-                
-                <div class="features">
-                    <ul>
-                        <li>Create and manage screenplay projects</li>
-                        <li>Build detailed storyboards and shot lists</li>
-                        <li>Organize shooting schedules</li>
-                        <li>Collaborate with your team</li>
-                        <li>Access AI-powered script analysis tools</li>
-                    </ul>
-                </div>
-                
-                <a href="https://prepapp.name.ng/dashboard.html" class="cta-button">Go to Dashboard</a>
-                
-                <h2>Need Help?</h2>
-                <p>Check out our <a href="https://prepapp.name.ng/guide.html">User Guide</a> or <a href="https://prepapp.name.ng/contactsupport.html">Contact Support</a> if you have any questions.</p>
-                
-                <p>Happy creating!<br>The PREP Team</p>
-            </div>
-            
-            <div class="footer">
-                <p>&copy; 2026 PREP - Cinematic Pre-production Operating System</p>
-                <p><a href="https://prepapp.name.ng">Visit Website</a> | <a href="https://prepapp.name.ng/contactsupport.html">Support</a></p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
-}
-
-/**
- * Send payment confirmation email via Brevo
- * Same service used for signup welcome emails
- */
-async function sendPaymentConfirmationEmail(email, fullName, plan, amount, transactionId) {
+async function sendPaymentConfirmationEmail(email, fullName, plan, amount, transactionId, currency, billingCycle) {
   try {
     if (!BREVO_API_KEY) {
       console.warn('BREVO_API_KEY not configured - payment email skipped');
       return false;
     }
 
-    // Send email via Brevo
+    const safePlan  = (plan === 'studio') ? 'studio' : 'pro';
+    const planLabel = safePlan === 'studio' ? 'Studio' : 'Pro';
+
     const response = await fetchFn(`${BREVO_API_URL}/smtp/email`, {
       method: 'POST',
       headers: {
@@ -576,22 +497,11 @@ async function sendPaymentConfirmationEmail(email, fullName, plan, amount, trans
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        to: [
-          {
-            email: email,
-            name: fullName
-          }
-        ],
-        sender: {
-          name: 'PREP - Cinematic Pre-production',
-          email: 'noreply@prepapp.name.ng'
-        },
-        subject: `🎉 Welcome to PREP Pro, ${fullName}!`,
-        htmlContent: generatePaymentConfirmationEmail(fullName, plan, amount),
-        replyTo: {
-          email: 'info@prepapp.name.ng',
-          name: 'PREP Support'
-        }
+        to: [{ email, name: fullName }],
+        sender: { name: 'PREP - Cinematic Pre-production', email: 'noreply@prepapp.name.ng' },
+        subject: `You're on PREP ${planLabel}! 🎬`,
+        htmlContent: generatePaymentConfirmationEmail(fullName, safePlan, amount, currency, billingCycle),
+        replyTo: { email: 'info@prepapp.name.ng', name: 'PREP Support' }
       })
     });
 
@@ -606,99 +516,8 @@ async function sendPaymentConfirmationEmail(email, fullName, plan, amount, trans
     return true;
   } catch (error) {
     console.error('Error sending payment confirmation email:', error);
-    // Don't fail payment if email fails - just log it
     return false;
   }
-}
-
-/**
- * Generate HTML content for payment confirmation email
- */
-function generatePaymentConfirmationEmail(fullName, plan, amount) {
-  const planFeatures = {
-    pro: [
-      '<li>✅ Unlimited active projects</li>',
-      '<li>✅ Advanced AI scene analysis</li>',
-      '<li>✅ 500MB+ upload storage</li>',
-      '<li>✅ Team collaboration tools</li>',
-      '<li>✅ Priority support</li>'
-    ],
-    studio: [
-      '<li>✅ Unlimited everything</li>',
-      '<li>✅ Custom workflows</li>',
-      '<li>✅ Dedicated account manager</li>',
-      '<li>✅ SSO and API access</li>'
-    ]
-  };
-
-  const features = (planFeatures[plan] || planFeatures.pro).join('');
-
-  return `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Payment Confirmed - PREP</title>
-        <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { text-align: center; padding: 20px 0; margin-bottom: 30px; }
-            .header h1 { color: #28a745; margin: 0; font-size: 28px; }
-            .content { padding: 20px 0; }
-            .content h2 { color: #333; font-size: 20px; }
-            .content p { margin: 10px 0; }
-            .plan-badge { display: inline-block; background: #ff6500; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 10px 0; }
-            .features { margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #28a745; }
-            .features li { margin: 8px 0; }
-            .cta-button { display: inline-block; margin: 20px 0; padding: 12px 30px; background: #ff6500; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
-            .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #666; }
-            .amount { font-size: 24px; color: #28a745; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>✅ Payment Successful!</h1>
-            </div>
-            
-            <div class="content">
-                <p>Hi <strong>${fullName}</strong>,</p>
-                
-                <p>Thank you for upgrading to PREP Pro! Your payment has been received and processed successfully.</p>
-                
-                <div style="text-align: center; margin: 20px 0;">
-                    <div class="amount">$${amount}/month</div>
-                    <div class="plan-badge">${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan</div>
-                </div>
-                
-                <h2>What's Included</h2>
-                <div class="features">
-                    <ul style="margin: 0; padding-left: 20px;">
-                        ${features}
-                    </ul>
-                </div>
-                
-                <p>Your account is now fully upgraded. You have immediate access to all Pro features!</p>
-                
-                <a href="https://prepapp.name.ng/dashboard.html" class="cta-button">Go to Dashboard</a>
-                
-                <h2>Next Steps</h2>
-                <p>Start creating unlimited projects and leverage advanced AI features to streamline your pre-production workflow.</p>
-                
-                <p>Have questions? Check out our <a href="https://prepapp.name.ng/guide.html">User Guide</a> or <a href="https://prepapp.name.ng/contactsupport.html">Contact Support</a>.</p>
-                
-                <p>Happy creating!<br>The PREP Team</p>
-            </div>
-            
-            <div class="footer">
-                <p>&copy; 2026 PREP - Cinematic Pre-production Operating System</p>
-                <p><a href="https://prepapp.name.ng">Visit Website</a> | <a href="https://prepapp.name.ng/contactsupport.html">Support</a></p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
 }
 
 /**
@@ -832,8 +651,15 @@ app.post('/api/payment/webhook', verifyFlutterwaveWebhook, async (req, res) => {
       }
 
       if (email) {
-        sendPaymentConfirmationEmail(email, customerName, safePlan, payload.data?.amount, payload.data?.id)
-          .catch(err => console.error('Webhook: payment confirmation email failed:', err));
+        sendPaymentConfirmationEmail(
+          email,
+          customerName,
+          safePlan,
+          payload.data?.amount,
+          payload.data?.id,
+          payload.data?.currency,
+          payload.data?.meta?.billingCycle // 'monthly' | 'yearly' set during initialize
+        ).catch(err => console.error('Webhook: payment confirmation email failed:', err));
       }
     }
 
@@ -1423,7 +1249,7 @@ async function checkAndIncrementAIUsage(uid) {
  */
 app.post('/api/ai/gemini', verifyFirebaseToken, async (req, res) => {
   try {
-    const { model, contents, generationConfig } = req.body;
+    const { model, contents, generationConfig, system_instruction } = req.body;
 
     if (!model || !contents) {
       return res.status(400).json({ success: false, message: 'model and contents are required' });
@@ -1467,10 +1293,19 @@ app.post('/api/ai/gemini', verifyFirebaseToken, async (req, res) => {
         try {
           const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${candidateModel}:generateContent?key=${geminiKey}`;
 
+          const geminiBody = { contents };
+          if (generationConfig && typeof generationConfig === 'object') {
+            const { signal: _signal, ...cleanGenerationConfig } = generationConfig;
+            if (Object.keys(cleanGenerationConfig).length) {
+              geminiBody.generationConfig = cleanGenerationConfig;
+            }
+          }
+          if (system_instruction) geminiBody.system_instruction = system_instruction;
+
           const geminiRes = await fetchFn(geminiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents, generationConfig }),
+            body: JSON.stringify(geminiBody),
           });
 
           const data = await geminiRes.json();
@@ -1521,6 +1356,142 @@ app.post('/api/ai/gemini', verifyFirebaseToken, async (req, res) => {
   } catch (error) {
     console.error('Gemini proxy error:', error);
     res.status(500).json({ success: false, message: error.message || 'Gemini proxy failed' });
+  }
+});
+
+/**
+ * Gemini AI Streaming Proxy
+ * Same auth/usage-gate as /api/ai/gemini but streams the response back
+ * as Server-Sent Events (SSE) so the client can render tokens in real time.
+ */
+app.post('/api/ai/gemini/stream', verifyFirebaseToken, async (req, res) => {
+  try {
+    const { model, contents, generationConfig, system_instruction } = req.body;
+
+    if (!model || !contents) {
+      return res.status(400).json({ success: false, message: 'model and contents are required' });
+    }
+
+    // ── Usage gate (same as non-streaming endpoint) ───────────────────────────
+    const uid = req.firebaseUser.uid;
+    const usage = await checkAndIncrementAIUsage(uid);
+    if (!usage.allowed) {
+      return res.status(429).json({
+        success: false,
+        code: 'limit_reached',
+        message: `You've used all ${usage.limit} AI calls included in your ${usage.plan} plan this month. Upgrade to Pro for more.`,
+        used: usage.used,
+        limit: usage.limit,
+        plan: usage.plan,
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) {
+      return res.status(500).json({ success: false, message: 'GEMINI_API_KEY not configured on server.' });
+    }
+
+    // Model fallback chain
+    const modelChain = [
+      model,
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-flash-latest',
+    ].filter(Boolean).filter((m, i, arr) => arr.indexOf(m) === i);
+
+    // Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering if present
+    res.flushHeaders();
+
+    const sendEvent = (data) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    for (const candidateModel of modelChain) {
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${candidateModel}:streamGenerateContent?alt=sse&key=${geminiKey}`;
+
+        const geminiBody = { contents };
+        if (generationConfig && typeof generationConfig === 'object') {
+          const { signal: _s, ...cleanConfig } = generationConfig;
+          if (Object.keys(cleanConfig).length) geminiBody.generationConfig = cleanConfig;
+        }
+        if (system_instruction) geminiBody.system_instruction = system_instruction;
+
+        const geminiRes = await fetchFn(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(geminiBody),
+        });
+
+        if (geminiRes.status === 429) {
+          // Rate-limited on this model — try next
+          console.warn(`[Gemini Stream] 429 on ${candidateModel}, trying next model`);
+          continue;
+        }
+
+        if (!geminiRes.ok) {
+          const errData = await geminiRes.json().catch(() => ({}));
+          const message = errData?.error?.message || `Gemini API error (${geminiRes.status})`;
+          sendEvent({ error: true, message });
+          return res.end();
+        }
+
+        // Pipe SSE chunks from Gemini to the client
+        const reader = geminiRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // SSE lines are separated by \n\n — process complete events
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete last line
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const raw = trimmed.slice(5).trim();
+            if (raw === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(raw);
+              const chunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (chunk) sendEvent({ chunk });
+            } catch (_) { /* ignore malformed lines */ }
+          }
+        }
+
+        // Signal completion
+        sendEvent({ done: true, model: candidateModel });
+        return res.end();
+
+      } catch (err) {
+        console.warn(`[Gemini Stream] Error on ${candidateModel}:`, err.message);
+        // Try next model
+      }
+    }
+
+    // All models failed
+    sendEvent({ error: true, message: 'The AI service is currently busy. Please try again.' });
+    res.end();
+
+  } catch (error) {
+    console.error('[Gemini Stream] Proxy error:', error);
+    // If headers not sent yet, send JSON error; otherwise send SSE error
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: error.message || 'Stream proxy failed' });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: true, message: error.message || 'Stream failed' })}\n\n`);
+      res.end();
+    }
   }
 });
 
