@@ -96,7 +96,7 @@ export const PLAN_LIMITS = {
     teamCollaborationDetails: {
       canShare: true,
       canInviteMembers: true,
-      maxTeamMembers: 50,
+      maxTeamMembers: 15,
       hasComments: true,
       hasVersionHistory: true,
       hasRoles: true,
@@ -147,11 +147,11 @@ export async function initializePrices() {
     return { proMonthly, proYearly, studioMonthly, studioYearly };
   } catch (error) {
     console.error('Error initializing prices:', error);
-    PLAN_LIMITS.pro.price = '$8/mo';
-    PLAN_LIMITS.pro.priceYearly = '$77/yr';
+    PLAN_LIMITS.pro.price = '₦1,000/mo';
+    PLAN_LIMITS.pro.priceYearly = '₦9,600/yr';
     PLAN_LIMITS.studio.price = '$20/mo';
     PLAN_LIMITS.studio.priceYearly = '$192/yr';
-    return { proMonthly: '$8/mo', proYearly: '$77/yr', studioMonthly: '$20/mo', studioYearly: '$192/yr' };
+    return { proMonthly: '₦1,000/mo', proYearly: '₦9,600/yr', studioMonthly: '$20/mo', studioYearly: '$192/yr' };
   }
 }
 

@@ -13,6 +13,7 @@ import {
   limit,
   onSnapshot,
   getDoc,
+  getDocFromServer,
   getDocs,
   writeBatch,
   increment,
@@ -26,33 +27,46 @@ import {
  * Get a signed Cloudinary upload signature from the backend.
  * This replaces the unsigned preset — only authenticated users can upload.
  */
-async function getCloudinarySignature() {
+async function getCloudinarySignature(resourceType = 'image') {
   const user = auth.currentUser;
   if (!user) throw new Error('Must be signed in to upload files.');
   const idToken = await user.getIdToken();
   const { getBackendBaseUrl } = await import('./config.js');
   const res = await fetch(`${getBackendBaseUrl()}/api/cloudinary/sign`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${idToken}` },
+    headers: {
+      'Authorization': `Bearer ${idToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ resourceType })
   });
   const data = await res.json();
   if (!data.success) throw new Error(data.message || 'Failed to get upload signature');
   return data; // { signature, timestamp, apiKey, cloudName, folder }
 }
 
+function getCloudinaryResourceType(file) {
+  if (!file?.type) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  if (file.type.startsWith('audio/')) return 'video';
+  return 'image';
+}
+
 /**
  * Upload a file to Cloudinary using a server-signed request.
  * Replaces the old unsigned preset approach.
  */
-async function cloudinaryUpload(file) {
-  const { signature, timestamp, apiKey, cloudName, folder } = await getCloudinarySignature();
-  const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+async function cloudinaryUpload(file, resourceType = null) {
+  const resolvedResourceType = resourceType || getCloudinaryResourceType(file);
+  const { signature, timestamp, apiKey, cloudName, folder } = await getCloudinarySignature(resolvedResourceType);
+  const url = `https://api.cloudinary.com/v1_1/${cloudName}/${resolvedResourceType}/upload`;
   const formData = new FormData();
   formData.append('file', file);
   formData.append('api_key', apiKey);
   formData.append('timestamp', timestamp);
   formData.append('signature', signature);
   formData.append('folder', folder);
+  formData.append('resource_type', resolvedResourceType);
   const response = await fetch(url, { method: 'POST', body: formData });
   const data = await response.json();
   if (data.secure_url) return data.secure_url;
@@ -63,6 +77,43 @@ export async function uploadProfileImage(file) {
   const userId = auth.currentUser?.uid;
   if (!userId) throw new Error('Cannot upload profile image: No authenticated user.');
   return cloudinaryUpload(file);
+}
+
+export async function uploadMediaAsset({ file, projectId = null, metadata = {}, addToLibrary = true } = {}) {
+  const userId = auth.currentUser?.uid;
+  if (!userId) throw new Error('Cannot upload media: No authenticated user.');
+  if (!file) throw new Error('No file provided for upload.');
+
+  const fileSizeMB = Math.max(file.size / (1024 * 1024), 0.001);
+  const { allowed, reason } = await canUploadFile(userId, fileSizeMB);
+  if (!allowed) throw new Error(reason || 'Storage limit reached.');
+
+  const resourceType = getCloudinaryResourceType(file);
+  const url = await cloudinaryUpload(file, resourceType);
+  await updateStorageUsage(userId, fileSizeMB);
+
+  let mediaDoc = null;
+  if (addToLibrary) {
+    mediaDoc = await addMediaToLibrary({
+      ...metadata,
+      url,
+      name: metadata.name || file.name,
+      type: metadata.type || 'reference',
+      projectId: metadata.projectId ?? projectId ?? null,
+      projectName: metadata.projectName ?? null,
+      notes: metadata.notes || '',
+      size: file.size,
+      mimeType: file.type || null,
+      source: metadata.source || null,
+    });
+  }
+
+  return {
+    url,
+    mediaDocId: mediaDoc?.id || null,
+    sizeMB: fileSizeMB,
+    resourceType
+  };
 }
 
 export function getProfileRef() {
@@ -205,17 +256,46 @@ export function getCollaboratorFeaturePermissions(projectData) {
 }
 
 /**
- * Check if the current collaborator has access to a specific feature.
- * Owners and editors with no explicit block always have access.
- * Returns false only when featurePermissions[featureKey] === false.
+ * Normalises a raw permission value to { access, edit }.
+ * Handles both the old boolean format and the new object format.
+ *   old: true/false          → { access: true/false, edit: true/false }
+ *   new: { access, edit }    → returned as-is
+ *   missing (undefined/null) → { access: true, edit: true }  (default open)
+ * @param {*} raw
+ * @returns {{ access: boolean, edit: boolean }}
+ */
+export function normalisePermission(raw) {
+  if (raw === null || raw === undefined) return { access: true, edit: true };
+  if (typeof raw === 'boolean')          return { access: raw, edit: raw };
+  if (typeof raw === 'object')           return { access: raw.access !== false, edit: raw.edit !== false };
+  return { access: true, edit: true };
+}
+
+/**
+ * Check if the current collaborator can ACCESS (open/view) a specific feature.
+ * Returns false only when access is explicitly denied.
  * @param {object} projectData
  * @param {string} featureKey  e.g. 'screenplay', 'budget', 'castCrew'
  * @returns {boolean}
  */
 export function hasFeatureAccess(projectData, featureKey) {
   const perms = getCollaboratorFeaturePermissions(projectData);
-  if (perms === null) return true; // owner
-  return perms[featureKey] !== false;
+  if (perms === null) return true; // owner — unrestricted
+  return normalisePermission(perms[featureKey]).access;
+}
+
+/**
+ * Check if the current collaborator can EDIT (make changes in) a specific feature.
+ * Returns false when edit is explicitly denied, or when access itself is denied.
+ * @param {object} projectData
+ * @param {string} featureKey
+ * @returns {boolean}
+ */
+export function hasFeatureEdit(projectData, featureKey) {
+  const perms = getCollaboratorFeaturePermissions(projectData);
+  if (perms === null) return true; // owner — unrestricted
+  const p = normalisePermission(perms[featureKey]);
+  return p.access && p.edit;
 }
 
 /**
@@ -504,7 +584,8 @@ async function enforceTeamCollaborationAccess() {
   if (!currentUser) throw new Error('No authenticated user.');
 
   const userRef = doc(db, 'users', currentUser.uid);
-  const userSnap = await getDoc(userRef);
+  // Use getDocFromServer to bypass IndexedDB cache — plan must be authoritative
+  const userSnap = await getDocFromServer(userRef);
   const plan = userSnap.exists() ? (userSnap.data()?.plan || 'free') : 'free';
 
   if (!getPlanConfig(plan).features.teamCollaboration) {
@@ -522,7 +603,6 @@ async function enforceTeamCollaborationAccess() {
  * @returns {Promise<{success: boolean, message: string}>}
  */
 export async function inviteCollaborator(projectId, inviteeEmail, role = 'viewer') {
-  await enforceTeamCollaborationAccess();
 
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error("No authenticated user.");
@@ -531,37 +611,94 @@ export async function inviteCollaborator(projectId, inviteeEmail, role = 'viewer
   const { getBackendBaseUrl } = await import('./config.js');
   const API_BASE = getBackendBaseUrl();
 
-  // Find the invitee by email
+  // Get the project to verify ownership and check collaborator list/limits
+  const projectsRef = getProjectsCollectionRef();
+  if (!projectsRef) throw new Error("Cannot access projects.");
+  const projectRef = doc(projectsRef, projectId);
+  const projectSnap = await getDoc(projectRef);
+
+  if (!projectSnap.exists()) {
+    return { success: false, message: 'Project not found.' };
+  }
+
+  const projectData = projectSnap.data();
+  const collaborators = projectData.collaborators || [];
+  const normalizedEmail = inviteeEmail.toLowerCase().trim();
+
+  // Check if already a collaborator
+  if (collaborators.some(c => c.email.toLowerCase().trim() === normalizedEmail)) {
+    return { success: false, message: 'This user is already a collaborator.' };
+  }
+
+  // ── Plan gate & collaborator limit check ──────────────────────────────────
+  let ownerPlan = 'free';
+  try {
+    const ownerRef = doc(collection(db, 'users'), currentUser.uid);
+    const ownerSnap = await getDoc(ownerRef);
+    const rawPlan = ownerSnap.exists() ? (ownerSnap.data().plan || 'free') : 'free';
+    const planAliases = { premium: 'pro', paid: 'pro' };
+    const basePlan = rawPlan.toLowerCase().replace(/-(monthly|yearly|annual)$/, '');
+    ownerPlan = planAliases[basePlan] || basePlan;
+
+    if (ownerPlan === 'free') {
+      return {
+        success: false,
+        message: 'Team collaboration is a Pro feature. Upgrade to Pro to invite collaborators.',
+        upgradeRequired: true,
+        requiredPlan: 'pro'
+      };
+    }
+
+    const maxTeamMembers = ownerPlan === 'studio' ? 15 : 5;
+    if (collaborators.length >= maxTeamMembers) {
+      return {
+        success: false,
+        message: `Collaborator limit reached. Your ${ownerPlan.toUpperCase()} plan allows up to ${maxTeamMembers} collaborators. Upgrade to a higher plan for more slots.`,
+        limitReached: true,
+        maxTeamMembers
+      };
+    }
+  } catch (planCheckError) {
+    console.error('[inviteCollaborator] Plan check failed:', planCheckError);
+    return { success: false, message: 'Could not verify plan. Please try again.' };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Find the invitee by email — try lowercase first (normalized), then original casing
+  // as a fallback since Firebase Auth may store emails in their original case.
   const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('email', '==', inviteeEmail.toLowerCase().trim()));
-  const snapshot = await getDocs(q);
+  let snapshot = await getDocs(query(usersRef, where('email', '==', normalizedEmail)));
+  if (snapshot.empty && inviteeEmail.trim() !== normalizedEmail) {
+    snapshot = await getDocs(query(usersRef, where('email', '==', inviteeEmail.trim())));
+  }
 
   // --- Case 1: User does NOT exist on PREP — send signup invitation email ---
   if (snapshot.empty) {
-    // Get project name for the email
-    const projectsRef = getProjectsCollectionRef();
-    if (!projectsRef) throw new Error("Cannot access projects.");
-    const projectSnap = await getDoc(doc(projectsRef, projectId));
-    const projectName = projectSnap.exists() ? projectSnap.data().name : 'a project';
+    const projectName = projectData ? projectData.name : 'a project';
 
     // Send invite email via server — attach the inviter's ID token so the
     // /api/collaboration/invite endpoint can verify the caller is authenticated.
     try {
       const idToken = await currentUser.getIdToken();
-      await fetch(`${API_BASE}/api/collaboration/invite`, {
+      const emailRes = await fetch(`${API_BASE}/api/collaboration/invite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
-          inviteeEmail: inviteeEmail.toLowerCase().trim(),
+          projectId,
+          inviteeEmail: normalizedEmail,
           projectName,
           role,
           userExists: false,
           signupLink: 'https://prepapp.name.ng/signup.html'
         })
       });
+      if (!emailRes.ok) {
+        const errData = await emailRes.json().catch(() => ({}));
+        console.warn('Invite email server error:', errData.message || emailRes.status);
+      }
     } catch (emailErr) {
       console.warn('Invite email failed (non-blocking):', emailErr);
     }
@@ -582,20 +719,7 @@ export async function inviteCollaborator(projectId, inviteeEmail, role = 'viewer
     return { success: false, message: "You can't invite yourself." };
   }
 
-  // Get the project to verify ownership
-  const projectsRef = getProjectsCollectionRef();
-  if (!projectsRef) throw new Error("Cannot access projects.");
-  const projectRef = doc(projectsRef, projectId);
-  const projectSnap = await getDoc(projectRef);
-
-  if (!projectSnap.exists()) {
-    return { success: false, message: 'Project not found.' };
-  }
-
-  const projectData = projectSnap.data();
-  const collaborators = projectData.collaborators || [];
-
-  // Check if already a collaborator
+  // Check if already a collaborator by UID (defense in depth)
   if (collaborators.some(c => c.userId === inviteeId)) {
     return { success: false, message: 'This user is already a collaborator.' };
   }
@@ -1021,7 +1145,7 @@ export async function getUserSubscriptionPlan(userId) {
       return 'free';
     }
     const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
+    const userDoc = await getDocFromServer(userRef);
     const plan = userDoc.data()?.plan || 'free';
     return plan;
   } catch (error) {
@@ -1041,7 +1165,7 @@ export async function getUserSubscriptionDetails(userId) {
       return { plan: 'free', status: 'inactive' };
     }
     const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
+    const userDoc = await getDocFromServer(userRef);
     const data = userDoc.data() || {};
     
     return {
@@ -1062,7 +1186,7 @@ export async function getUserSubscriptionDetails(userId) {
  * Update user subscription after successful payment
  * @param {string} userId - User ID
  * @param {string} plan - Plan type ('pro' or 'studio')
- * @param {string} subscriptionId - Flutterwave subscription ID
+ * @param {string} subscriptionId - Paystack subscription/transaction reference
  * @returns {Promise<object>} Updated subscription data
  */
 export async function updateSubscriptionAfterPayment(userId, plan, subscriptionId) {
@@ -1184,7 +1308,7 @@ export async function getStorageUsage(userId) {
     }
     
     const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
+    const userDoc = await getDocFromServer(userRef);
     const data = userDoc.data() || {};
     
     const plan = data.plan || 'free';
@@ -1235,16 +1359,14 @@ export async function canUploadFile(userId, fileSizeMB) {
 export async function updateStorageUsage(userId, fileSizeMB) {
   try {
     const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
-    const currentUsage = userDoc.data()?.storageUsedMB || 0;
-    const newUsage = currentUsage + fileSizeMB;
-    
+
+    // Use atomic increment to avoid race conditions from concurrent uploads
     await updateDoc(userRef, {
-      storageUsedMB: newUsage,
+      storageUsedMB: increment(fileSizeMB),
       lastStorageUpdateAt: serverTimestamp()
     });
     
-    await logAnalyticsEvent('file_uploaded', { sizeMB: fileSizeMB, totalUsedMB: newUsage });
+    await logAnalyticsEvent('file_uploaded', { sizeMB: fileSizeMB });
     
     return getStorageUsage(userId);
   } catch (error) {

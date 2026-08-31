@@ -34,6 +34,7 @@ const diagnostics = {
 diagnostics.log('Payment system initialized', {
   frontend: diagnostics.frontendOrigin,
   backend: diagnostics.backendUrl,
+  gateway: 'paystack',
   timestamp: new Date().toISOString()
 });
 
@@ -54,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await updatePriceDisplays();
   setupBillingToggle();
   setupPricingButtons();
+  checkAutostart();
 });
 
 function applyDarkMode() {
@@ -147,9 +149,11 @@ function setupPricingButtons() {
     if (user) {
       try {
         const userDoc = await import('./firebase.js').then(m => m.db);
-        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js');
+        const { doc, getDocFromServer } = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js');
         const userRef   = doc(userDoc, 'users', user.uid);
-        const snapshot  = await getDoc(userRef);
+        // Use getDocFromServer to bypass the Firestore IndexedDB cache — prevents
+        // the pricing page from showing wrong button states based on a stale plan.
+        const snapshot  = await getDocFromServer(userRef);
         if (snapshot.exists()) {
           const raw = snapshot.data()?.plan || 'free';
           const planAliases = { premium: 'pro', paid: 'pro' };
@@ -210,6 +214,36 @@ function setupPricingButtons() {
   });
 }
 
+/**
+ * If the page was loaded with ?autostart=true (e.g. from the founding-member
+ * offer after sign-up), wait for auth then automatically kick off payment for
+ * the requested plan. Falls back to 'pro' if the plan param is unrecognised.
+ */
+function checkAutostart() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('autostart') !== 'true') return;
+
+  // Map URL plan names to internal plan types
+  const planParam = params.get('plan') || 'pro';
+  const planMap = { 'founding-member': 'pro', 'pro': 'pro', 'studio': 'studio' };
+  const planType = planMap[planParam] || 'pro';
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      window.location.href = `login.html?redirect=pricing.html?plan=${planParam}%26autostart=true`;
+      return;
+    }
+
+    // Scroll to and highlight the correct plan card
+    const btnId = planType === 'studio' ? 'upgradeStudioBtn' : 'upgradeProBtn';
+    const btn = document.getElementById(btnId);
+    if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Brief delay so the page renders before the modal opens
+    setTimeout(() => startPayment(user, planType), 800);
+  });
+}
+
 async function startPayment(user, planType) {
   const btnId = planType === 'studio' ? 'upgradeStudioBtn' : 'upgradeProBtn';
   const button = document.getElementById(btnId);
@@ -267,7 +301,8 @@ async function startPayment(user, planType) {
     if (!response.ok) {
       let errorData = {};
       try { errorData = await response.json(); } catch (_) {}
-      diagnostics.error('Server error', { status: response.status, data: errorData });
+      diagnostics.error('Server error', { status: response.status, message: errorData.message || '(no message)', data: errorData });
+      console.error('[PREP Payment] Full error response:', JSON.stringify(errorData));
       showErrorModal('We encountered a problem processing your payment. Please try again or contact support.');
       button.innerHTML = originalText;
       button.disabled  = false;
@@ -291,51 +326,12 @@ async function startPayment(user, planType) {
       return;
     }
 
-    // Open Flutterwave payment modal
-    if (data.data?.paymentLink) {
-      window.location.href = data.data.paymentLink;
-    } else if (window.FlutterwaveCheckout) {
-      const flwPublicKey =
-        window.PREP_CONFIG?.flutterwavePublicKey ||
-        import.meta?.env?.VITE_FLUTTERWAVE_PUBLIC_KEY || '';
-      if (!flwPublicKey) {
-        showErrorModal('Payment configuration error. Please contact support.');
-        button.innerHTML = originalText;
-        button.disabled  = false;
-        return;
-      }
-      const planTitle = planType === 'studio' ? 'PREP Studio Subscription' : 'PREP Pro Subscription';
-      window.FlutterwaveCheckout({
-        public_key: flwPublicKey,
-        tx_ref:     data.data.txRef,
-        amount:     localAmount,
-        currency:   currencyCode,
-        payment_options: 'card,ussd,account,credit_topup,apple_pay,google_pay',
-        customer: {
-          email: user.email,
-          name:  user.displayName || 'PREP User',
-        },
-        customizations: {
-          title:       planTitle,
-          description: `${billingPeriod === 'yearly' ? 'Yearly' : 'Monthly'} subscription to PREP ${planType.toUpperCase()} plan`,
-          logo:        '/assets/logo.png',
-        },
-        onclose: () => {
-          button.innerHTML = originalText;
-          button.disabled  = false;
-        },
-        callback: async (response) => {
-          if (response.status === 'successful') {
-            await verifyPayment(response.transaction_id, planLabel);
-          } else {
-            showErrorModal('Payment was not completed');
-            button.innerHTML = originalText;
-            button.disabled  = false;
-          }
-        },
-      });
+    // Redirect to Paystack's hosted payment page.
+    // Server returns { success, paymentLink, reference } — redirect immediately.
+    if (data.paymentLink) {
+      window.location.href = data.paymentLink;
     } else {
-      showErrorModal('Flutterwave payment system not loaded');
+      showErrorModal('Payment link was not returned by the server. Please try again or contact support.');
       button.innerHTML = originalText;
       button.disabled  = false;
     }
@@ -348,13 +344,11 @@ async function startPayment(user, planType) {
   }
 }
 
-async function verifyPayment(transactionId, plan) {
+async function verifyPayment(reference, plan) {
   try {
     const verifyUrl = `${apiConfig.baseUrl}/api/payment/verify`;
     console.log('Verifying payment at:', verifyUrl);
 
-    // Get the current user's Firebase ID token to authenticate the request.
-    // The server extracts the UID from this token — we do NOT send userId in the body.
     const user = auth.currentUser;
     if (!user) {
       showErrorModal('You must be signed in to verify a payment.');
@@ -370,9 +364,8 @@ async function verifyPayment(transactionId, plan) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ 
-          transactionId: transactionId,
-          plan: plan
+        body: JSON.stringify({
+          reference,   // Paystack reference string (e.g. PREP-uid-timestamp-random)
           // userId intentionally omitted — server reads it from the verified token
         }),
       });
@@ -381,13 +374,9 @@ async function verifyPayment(transactionId, plan) {
 
     } catch (fetchError) {
       console.error('Verification fetch error:', fetchError.message);
-      
-      let errorMessage = 'Payment verification failed';
-      if (fetchError.message.includes('Failed to fetch')) {
-        errorMessage = 'CORS Error during verification. Backend configuration issue.';
-      }
-      
-      showErrorModal(errorMessage);
+      showErrorModal(fetchError.message.includes('Failed to fetch')
+        ? 'CORS Error during verification. Backend configuration issue.'
+        : 'Payment verification failed');
       return;
     }
 
@@ -401,7 +390,7 @@ async function verifyPayment(transactionId, plan) {
     const data = await response.json();
     console.log('Verification response:', data);
     
-    if (data.success && data.status === 'success') {
+    if (data.success) {
       // data.plan comes back already normalized by the server (e.g. 'studio', 'pro')
       const planLabel = (data.plan || plan).startsWith('studio') ? 'PREP Studio' : 'PREP Pro';
       showSuccessModal(`Welcome to ${planLabel}! 🎉`);

@@ -176,21 +176,40 @@ async function verifyFirebaseToken(req, res, next) {
   }
 }
 
-// ─── Flutterwave Webhook Signature Verification ───────────────────────────────
-// Validates the verificationhash header against the secret hash configured in
-// your Flutterwave dashboard (Settings → Webhooks → Secret Hash).
-// Set FLUTTERWAVE_WEBHOOK_SECRET in your Render environment variables.
+// ─── Paystack Webhook Signature Verification ─────────────────────────────────
+// Paystack signs every webhook with HMAC-SHA512 of the raw request body using
+// your secret key. The signature is sent in the x-paystack-signature header.
+// We compare it to our own HMAC of the raw body — if they match the request
+// is genuine.  Set PAYSTACK_SECRET_KEY in your Render environment variables.
 const crypto = require('crypto');
-function verifyFlutterwaveWebhook(req, res, next) {
-  const secretHash = process.env.FLUTTERWAVE_WEBHOOK_SECRET;
-  if (!secretHash) {
-    // Secret not configured — reject all webhook calls to prevent abuse
-    console.error('FLUTTERWAVE_WEBHOOK_SECRET not set — rejecting webhook');
+
+// Paystack requires the raw body bytes for signature verification.
+// Express's json() middleware parses and discards the raw body, so we capture
+// it here BEFORE json() runs, storing it on req.rawBody for the webhook route.
+app.use('/api/payment/webhook', (req, res, next) => {
+  let data = '';
+  req.setEncoding('utf8');
+  req.on('data', chunk => { data += chunk; });
+  req.on('end', () => { req.rawBody = data; next(); });
+});
+
+function verifyPaystackWebhook(req, res, next) {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey) {
+    console.error('PAYSTACK_SECRET_KEY not set — rejecting webhook');
     return res.status(500).json({ success: false, message: 'Webhook secret not configured' });
   }
-  const signature = req.headers['verificationhash'];
-  if (!signature || signature !== secretHash) {
-    console.warn('Webhook signature mismatch — possible spoofed request');
+  const signature = req.headers['x-paystack-signature'];
+  if (!signature) {
+    console.warn('Paystack webhook: missing x-paystack-signature header');
+    return res.status(401).json({ success: false, message: 'Missing webhook signature' });
+  }
+  const expectedSig = crypto
+    .createHmac('sha512', secretKey)
+    .update(req.rawBody || '')
+    .digest('hex');
+  if (signature !== expectedSig) {
+    console.warn('Paystack webhook signature mismatch — possible spoofed request');
     return res.status(401).json({ success: false, message: 'Invalid webhook signature' });
   }
   next();
@@ -475,7 +494,7 @@ const {
  * @param {string} email
  * @param {string} fullName
  * @param {'pro'|'studio'} plan
- * @param {number|string} amount        - raw amount from Flutterwave
+ * @param {number|string} amount        - raw amount (already converted from subunits)
  * @param {string} [transactionId]
  * @param {string} [currency]           - ISO code e.g. 'USD' or 'NGN'
  * @param {string} [billingCycle]       - 'monthly' | 'yearly'
@@ -520,27 +539,14 @@ async function sendPaymentConfirmationEmail(email, fullName, plan, amount, trans
   }
 }
 
-/**
- * Flutterwave Payment Endpoints
- */
-
-const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
-const FLUTTERWAVE_API_URL = 'https://api.flutterwave.com/v3';
-
-// NOTE: /api/payment/initialize is handled by payment-routes.js (mounted above).
-// The authenticated factory route is the canonical implementation.
-// The duplicate route that previously lived here has been removed to prevent
-// Express from silently shadowing the correct authenticated version.
-
-// NOTE: /api/payment/verify is handled by payment-routes.js (mounted above at line 136).
-// The factory route is registered first and is the canonical authenticated implementation.
-// The route that previously lived here was dead code (Express matched the factory first)
-// and has been removed to avoid confusion.
+// NOTE: /api/payment/initialize and /api/payment/verify are handled by
+// payment-routes.js (mounted above). The factory route is the canonical
+// authenticated implementation — do not add duplicate routes here.
 
 /**
  * GET /api/payment/history
  * Get payment history for the authenticated user.
- * Reads from the users/{userId}/payments subcollection written by flutterwave.js.
+ * Reads from the users/{userId}/payments subcollection.
  * Requires a valid Firebase ID token — users can only read their own history.
  */
 app.get('/api/payment/history', verifyFirebaseToken, async (req, res) => {
@@ -585,90 +591,95 @@ app.get('/api/payment/history', verifyFirebaseToken, async (req, res) => {
 });
 
 /**
- * Webhook endpoint for Flutterwave payment updates.
- * Signature is verified against FLUTTERWAVE_WEBHOOK_SECRET before any processing.
+ * POST /api/payment/webhook
+ * Webhook endpoint for Paystack payment events.
+ * Signature is verified with HMAC-SHA512 before any processing.
  *
- * Security note on userId: the userId in meta was embedded server-side by
+ * Security note on userId: the userId in metadata was embedded server-side by
  * /api/payment/initialize from a verified Firebase token — it is NOT
- * user-supplied in the original HTTP sense. However, since Flutterwave sends
- * it back in the webhook body, we treat it as semi-trusted: we use it to
- * find the Firestore document, but we also verify the tx_ref prefix
- * (PREP-{userId}-{timestamp}) matches, adding a second layer of confirmation
- * before writing the plan upgrade.
+ * user-supplied in the original HTTP sense. We cross-validate it against the
+ * reference prefix (PREP-{userId}-...) before writing any plan upgrade.
  */
-app.post('/api/payment/webhook', verifyFlutterwaveWebhook, async (req, res) => {
+app.post('/api/payment/webhook', verifyPaystackWebhook, (req, res) => {
+  // Parse body from rawBody (captured before express.json() ran on this route)
+  let payload;
   try {
-    const payload = req.body;
+    payload = JSON.parse(req.rawBody || '{}');
+  } catch (e) {
+    console.error('Webhook: failed to parse body:', e.message);
+    return res.status(400).json({ success: false, message: 'Invalid JSON body' });
+  }
 
-    console.log('Webhook received:', JSON.stringify({ event: payload.event, status: payload.data?.status, txRef: payload.data?.tx_ref }));
+  // Acknowledge Paystack immediately — processing is async
+  res.json({ success: true, message: 'Webhook received' });
 
-    if (payload.data?.status === 'successful') {
-      const txRef = payload.data?.tx_ref || '';
-      const email = payload.data?.customer?.email;
-      const customerName = payload.data?.customer?.name || 'Valued Customer';
+  // Process asynchronously so we don't time out Paystack's delivery
+  (async () => {
+    try {
+      console.log('Paystack webhook received:', JSON.stringify({
+        event:     payload.event,
+        reference: payload.data?.reference,
+        status:    payload.data?.status,
+      }));
 
-      // Normalize the plan from meta — strip billing-period suffixes and aliases.
-      const rawPlan = payload.data?.meta?.planType || payload.data?.meta?.plan || 'pro';
-      const plan = normalizePlan(rawPlan);
+      // Only act on successful charge events
+      if (payload.event !== 'charge.success' || payload.data?.status !== 'success') return;
 
-      // Validate plan against allowlist so the webhook cannot escalate to an
-      // unknown/privileged tier even if meta is tampered with.
-      const ALLOWED_PLANS = ['pro', 'studio'];
-      const safePlan = ALLOWED_PLANS.includes(plan) ? plan : 'pro';
+      const reference    = payload.data?.reference || '';
+      const email        = payload.data?.customer?.email;
+      const customerName = `${payload.data?.customer?.first_name || ''} ${payload.data?.customer?.last_name || ''}`.trim() || 'Valued Customer';
 
-      // userId comes from meta (set server-side during initialize).
-      // Cross-check it against the tx_ref prefix for extra confidence.
-      const metaUserId = payload.data?.meta?.userId;
-      const txRefUserId = txRef.startsWith('PREP-') ? txRef.split('-')[1] : null;
-      const userId = (metaUserId && txRefUserId && metaUserId === txRefUserId)
+      // Normalize plan from metadata
+      const rawPlan  = payload.data?.metadata?.planType || 'pro';
+      const plan     = normalizePlan(rawPlan);
+      const ALLOWED  = ['pro', 'studio'];
+      const safePlan = ALLOWED.includes(plan) ? plan : 'pro';
+
+      // Cross-validate userId: must match PREP-{userId}-... reference prefix
+      const metaUserId   = payload.data?.metadata?.userId;
+      const txRefUserId  = reference.startsWith('PREP-') ? reference.split('-')[1] : null;
+      const userId       = (metaUserId && txRefUserId && metaUserId === txRefUserId)
         ? metaUserId
-        : (metaUserId || txRefUserId);  // fall back to whichever is available
+        : (metaUserId || txRefUserId);
 
-      if (userId) {
-        if (!db) {
-          console.error('❌ Webhook: Firestore not initialized — check FIREBASE_SERVICE_ACCOUNT_JSON');
-        } else {
-          try {
-            await db.collection('users').doc(userId).update({
-              plan: safePlan,
-              subscriptionId: payload.data?.id,
-              subscriptionStatus: 'active',
-              subscriptionStartDate: new Date(),
-              lastPaymentDate: new Date(),
-              lastPaymentAmount: payload.data?.amount,
-              lastPaymentCurrency: payload.data?.currency,
-              email: email || null,
-              displayName: customerName || null,
-              planUpdatedAt: new Date(),
-            });
-            console.log(`✅ Webhook upgraded user ${userId} to "${safePlan}"`);
-          } catch (firestoreError) {
-            console.error('❌ Webhook: Firestore update failed:', firestoreError);
-          }
-        }
-      } else {
-        console.error('❌ Webhook: Could not determine userId from meta or tx_ref — no plan update performed');
+      if (!userId) {
+        console.error('❌ Webhook: Could not determine userId from metadata or reference — no plan update performed');
+        return;
       }
+
+      if (!db) {
+        console.error('❌ Webhook: Firestore not initialized');
+        return;
+      }
+
+      const amountPaid = (payload.data?.amount || 0) / 100; // kobo → naira
+      const currency   = payload.data?.currency || 'NGN';
+
+      await db.collection('users').doc(userId).update({
+        plan:                  safePlan,
+        subscriptionId:        payload.data?.id?.toString() || reference,
+        subscriptionStatus:    'active',
+        subscriptionStartDate: new Date(),
+        lastPaymentDate:       new Date(),
+        lastPaymentAmount:     amountPaid,
+        lastPaymentCurrency:   currency,
+        email:                 email || null,
+        displayName:           customerName || null,
+        planUpdatedAt:         new Date(),
+        paymentGateway:        'paystack',
+        paystackReference:     reference,
+      });
+      console.log(`✅ Webhook upgraded user ${userId} to "${safePlan}" (ref: ${reference})`);
 
       if (email) {
-        sendPaymentConfirmationEmail(
-          email,
-          customerName,
-          safePlan,
-          payload.data?.amount,
-          payload.data?.id,
-          payload.data?.currency,
-          payload.data?.meta?.billingCycle // 'monthly' | 'yearly' set during initialize
-        ).catch(err => console.error('Webhook: payment confirmation email failed:', err));
+        sendPaymentConfirmationEmail(email, customerName, safePlan, amountPaid, reference, currency, payload.data?.metadata?.billingCycle)
+          .catch(err => console.error('Webhook: payment confirmation email failed:', err));
       }
+
+    } catch (error) {
+      console.error('Webhook async processing error:', error);
     }
-
-    res.json({ success: true, message: 'Webhook received' });
-
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).json({ success: false, message: 'Webhook processing failed' });
-  }
+  })();
 });
 
 /**
@@ -851,21 +862,9 @@ app.post('/api/subscription/cancel', verifyFirebaseToken, async (req, res) => {
     return res.status(503).json({ success: false, message: 'Database not configured' });
   }
 
-  // Cancel with Flutterwave (non-blocking — continue even if it fails)
-  try {
-    const cancelResponse = await fetchFn(
-      `${FLUTTERWAVE_API_URL}/subscriptions/${subscriptionId}/cancel`,
-      { method: 'PUT', headers: { 'Authorization': `Bearer ${FLUTTERWAVE_SECRET_KEY}`, 'Content-Type': 'application/json' } }
-    );
-    if (!cancelResponse.ok) {
-      const err = await cancelResponse.json();
-      console.warn('Flutterwave cancel warning:', err.message);
-    } else {
-      console.log(`✅ Subscription ${subscriptionId} cancelled with Flutterwave`);
-    }
-  } catch (flutterErr) {
-    console.warn('Flutterwave cancel error (continuing):', flutterErr.message);
-  }
+  // Paystack does not have a server-side cancel API for one-time charges.
+  // We simply update Firestore to downgrade the user.
+  console.log(`ℹ️ Subscription ${subscriptionId} cancelled (Paystack — Firestore update only)`);
 
   // Downgrade in Firestore
   try {
@@ -983,7 +982,8 @@ app.post('/api/subscription/check-expiry', verifyFirebaseToken, async (req, res)
  */
 app.post('/api/collaboration/invite', verifyFirebaseToken, async (req, res) => {
   try {
-    const { inviteeEmail, inviteeName, projectName, role, userExists, signupLink } = req.body;
+    const { projectId, inviteeEmail, inviteeName, projectName, role, userExists, signupLink } = req.body;
+    const inviterUid = req.firebaseUser.uid;
     // inviterName comes from the verified token — not trusted from the body
     const inviterName = req.firebaseUser.name || req.firebaseUser.email || 'A PREP user';
 
@@ -999,6 +999,39 @@ app.post('/api/collaboration/invite', verifyFirebaseToken, async (req, res) => {
 
     // Role allowlist — prevent arbitrary strings reaching Firestore or email copy
     const safeRole = ['editor', 'viewer'].includes(role) ? role : 'viewer';
+
+    // Verify collaborator limit if projectId is provided (meaning this comes from our client wrapper)
+    if (projectId) {
+      const userSnap = await db.collection('users').doc(inviterUid).get();
+      const userData = userSnap.data() || {};
+      const rawPlan = userData.plan || 'free';
+      
+      const normalizePlan = (raw) => {
+        const aliases = { premium: 'pro', paid: 'pro' };
+        const base = raw.toLowerCase().replace(/-(monthly|yearly|annual)$/, '');
+        return aliases[base] || base;
+      };
+      const plan = normalizePlan(rawPlan);
+
+      if (plan === 'free') {
+        return res.status(403).json({ success: false, message: 'Team collaboration is a Pro feature. Upgrade to Pro to invite collaborators.' });
+      }
+
+      const TEAM_MEMBER_LIMITS = { pro: 5, studio: 15 };
+      const maxTeamMembers = TEAM_MEMBER_LIMITS[plan] || 1;
+
+      const projectSnap = await db.collection('users').doc(inviterUid).collection('projects').doc(projectId).get();
+      if (projectSnap.exists) {
+        const projectData = projectSnap.data() || {};
+        const collaborators = projectData.collaborators || [];
+        if (collaborators.length >= maxTeamMembers) {
+          return res.status(403).json({
+            success: false,
+            message: `Collaborator limit reached. Your ${plan.toUpperCase()} plan allows up to ${maxTeamMembers} collaborators.`
+          });
+        }
+      }
+    }
 
     if (!BREVO_API_KEY) {
       return res.status(500).json({ success: false, message: 'Email service not configured' });
@@ -1805,39 +1838,9 @@ app.post('/api/subscription/update-billing', verifyFirebaseToken, async (req, re
       });
     }
 
-    // Update payment method with Flutterwave
-    try {
-      const updateResponse = await fetchFn(
-        `${FLUTTERWAVE_API_URL}/subscriptions/${subscriptionId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            card_token: cardToken
-          })
-        }
-      );
-
-      if (!updateResponse.ok) {
-        const error = await updateResponse.json();
-        console.error('Flutterwave update failed:', error);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to update payment method'
-        });
-      }
-
-      console.log(`✅ Payment method updated for subscription ${subscriptionId}`);
-    } catch (flutterErr) {
-      console.error('Flutterwave API error:', flutterErr);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to update payment method with provider'
-      });
-    }
+    // Paystack does not have a REST API for updating a card token on one-time charges.
+    // Log and skip this step — the user would need to complete a new payment.
+    console.log(`ℹ️ Payment method update requested for ${subscriptionId} — not applicable for Paystack one-time charges`);
 
     // Log update in Firestore — use admin.firestore.FieldValue, not db.FieldValue
     try {
@@ -2005,7 +2008,7 @@ app.get('/api/monitoring/health', verifyFirebaseToken, async (req, res) => {
   try {
     const services = {
       firestore: { status: db ? 'healthy' : 'unhealthy', message: db ? 'Connected' : 'Not configured' },
-      flutterwave: { status: FLUTTERWAVE_SECRET_KEY ? 'healthy' : 'unhealthy', message: FLUTTERWAVE_SECRET_KEY ? 'Configured' : 'Not configured' },
+      paystack: { status: process.env.PAYSTACK_SECRET_KEY ? 'healthy' : 'unhealthy', message: process.env.PAYSTACK_SECRET_KEY ? 'Configured' : 'Not configured' },
       brevo: { status: BREVO_API_KEY ? 'healthy' : 'unhealthy', message: BREVO_API_KEY ? 'Configured' : 'Not configured' }
     };
 

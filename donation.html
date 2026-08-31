@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    
+  <link rel="icon" href="/assets/logo.png" type="image/png">
+<title>Support Prep Studio — Fueling the Future of Film</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    <style>
+        :root {
+            --brand-orange: #ff6500;
+            --brand-purple: #5a189a;
+            --brand-purple-dark: #2f0e4f;
+            --bg-gradient: radial-gradient(circle at top left, #fff6ef 0%, #f3efff 36%, #f7f3ff 100%);
+            --text-color: #1f1b28;
+            --muted-text: #6f6578;
+            --white: #ffffff;
+            --shadow: 0 24px 72px rgba(90, 24, 154, 0.12);
+            --border: rgba(90, 24, 154, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-color);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px 60px;
+        }
+
+        .navbar {
+            padding: 22px 0;
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(18px);
+            border-bottom: 1px solid rgba(90, 24, 154, 0.06);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .nav-logo {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 900;
+            color: var(--brand-orange);
+            text-decoration: none;
+            font-size: 1.25rem;
+        }
+
+        .nav-return {
+            color: var(--brand-purple);
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .hero {
+            padding: 100px 0 40px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: clamp(2.6rem, 6vw, 4rem);
+            font-weight: 900;
+            line-height: 1.02;
+            margin-bottom: 24px;
+        }
+
+        .hero h1 span {
+            color: var(--brand-purple);
+        }
+
+        .hero p {
+            max-width: 680px;
+            margin: 0 auto;
+            font-size: 1.1rem;
+            color: var(--muted-text);
+            line-height: 1.9;
+        }
+
+        .tracker {
+            background: var(--white);
+            padding: 40px;
+            border-radius: 32px;
+            box-shadow: var(--shadow);
+            margin: 40px auto 60px;
+            max-width: 820px;
+            border: 1px solid var(--border);
+        }
+
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .progress-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--brand-purple);
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .progress-title {
+            font-size: 1rem;
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        .progress-percent {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2rem;
+            color: var(--brand-orange);
+            font-weight: 900;
+        }
+
+        .progress-bar {
+            height: 16px;
+            background: #f0f0f5;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 30%;
+            background: linear-gradient(90deg, var(--brand-orange), var(--brand-purple));
+            border-radius: 999px;
+            transition: width 1.5s ease;
+        }
+
+        .tracker p {
+            margin-top: 18px;
+            font-size: 0.95rem;
+            color: var(--muted-text);
+            line-height: 1.75;
+        }
+
+        .impact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 26px;
+            margin-bottom: 72px;
+        }
+
+        .impact-card {
+            background: var(--white);
+            padding: 36px;
+            border-radius: 28px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(90, 24, 154, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .impact-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 28px 70px rgba(90, 24, 154, 0.12);
+        }
+
+        .icon-circle {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 101, 0, 0.12);
+            margin-bottom: 22px;
+        }
+
+        .icon-circle i {
+            color: var(--brand-orange);
+            font-size: 1.4rem;
+        }
+
+        .impact-card h3 {
+            margin: 0 0 14px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.2rem;
+            color: var(--brand-purple-dark);
+        }
+
+        .impact-card p {
+            margin: 0;
+            color: var(--muted-text);
+            line-height: 1.8;
+        }
+
+        .donation-cta {
+            background: var(--brand-purple-dark);
+            border-radius: 36px;
+            padding: 70px 36px;
+            text-align: center;
+            color: #ffffff;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .donation-cta::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 46%);
+            pointer-events: none;
+        }
+
+        .donation-cta h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: clamp(2rem, 4vw, 2.6rem);
+            margin: 0 0 16px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .donation-cta p {
+            margin: 0 auto;
+            max-width: 620px;
+            font-size: 1rem;
+            line-height: 1.8;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .btn-large {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--brand-orange);
+            color: #ffffff;
+            padding: 20px 56px;
+            border-radius: 999px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-decoration: none;
+            margin-top: 30px;
+            box-shadow: 0 16px 36px rgba(255, 101, 0, 0.34);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            z-index: 1;
+        }
+
+        .btn-large:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 46px rgba(255, 101, 0, 0.42);
+            animation-play-state: paused;
+        }
+
+        .btn-large {
+            animation: buttonFloat 4s ease-in-out infinite;
+        }
+
+        @keyframes buttonFloat {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-4px);
+                box-shadow: 0 18px 40px rgba(255, 101, 0, 0.4);
+            }
+        }
+
+        .animate-up {
+            opacity: 0;
+            transform: translateY(24px);
+            animation: fadeUp 0.8s ease-out forwards;
+        }
+
+        .animate-delay-1 { animation-delay: 0.12s; }
+        .animate-delay-2 { animation-delay: 0.18s; }
+        .animate-delay-3 { animation-delay: 0.24s; }
+        .animate-delay-4 { animation-delay: 0.30s; }
+        .animate-delay-5 { animation-delay: 0.36s; }
+
+        .impact-card {
+            background: var(--white);
+            padding: 36px;
+            border-radius: 28px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(90, 24, 154, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            opacity: 0;
+            transform: translateY(24px);
+            animation: fadeUp 0.8s ease-out forwards;
+        }
+
+        .payment-icons {
+            margin-top: 38px;
+            display: flex;
+            justify-content: center;
+            gap: 22px;
+            opacity: 0.78;
+            position: relative;
+            z-index: 1;
+        }
+
+        .payment-icons i {
+            font-size: 1.8rem;
+        }
+
+        .small-note {
+            margin-top: 16px;
+            font-size: 0.92rem;
+            opacity: 0.84;
+            position: relative;
+            z-index: 1;
+        }
+
+        .community-section {
+            text-align: center;
+            padding-bottom: 60px;
+        }
+
+        .community-section h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2rem;
+            margin-bottom: 12px;
+            color: var(--brand-purple);
+        }
+
+        .community-section p {
+            color: var(--muted-text);
+            margin-bottom: 24px;
+            font-size: 1rem;
+            max-width: 680px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.7;
+        }
+
+        .why-support {
+            padding: 60px 0 40px;
+            text-align: center;
+        }
+
+        .why-support h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2rem;
+            color: var(--brand-purple);
+            margin-bottom: 28px;
+        }
+
+        .why-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            align-items: stretch;
+        }
+
+        .why-card {
+            background: var(--white);
+            border-radius: 26px;
+            padding: 28px;
+            border: 1px solid rgba(90, 24, 154, 0.08);
+            box-shadow: 0 20px 48px rgba(90, 24, 154, 0.08);
+            opacity: 0;
+            transform: translateY(24px);
+            animation: fadeUp 0.8s ease-out forwards;
+        }
+
+        .why-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            border-radius: 18px;
+            margin-bottom: 20px;
+            font-size: 1.45rem;
+            background: rgba(255, 101, 0, 0.12);
+            color: var(--brand-orange);
+        }
+
+        .why-card h3 {
+            margin: 0 0 14px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.15rem;
+            color: var(--brand-purple-dark);
+        }
+
+        .why-card p {
+            color: var(--muted-text);
+            line-height: 1.8;
+        }
+
+        .donor-logos {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            margin-top: 28px;
+        }
+
+        .logo-item {
+            max-width: 120px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transform: translateY(16px);
+            animation: fadeUp 0.8s ease-out forwards;
+            animation-delay: 0.42s;
+        }
+
+        .logo-item img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            filter: grayscale(100%);
+            opacity: 0.7;
+            transition: filter 0.3s ease, opacity 0.3s ease;
+        }
+
+        .logo-item:hover img {
+            filter: grayscale(0%);
+            opacity: 1;
+        }
+
+        .donor-pills {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .pill {
+            padding: 10px 24px;
+            border-radius: 999px;
+            background: var(--white);
+            border: 1px solid rgba(90, 24, 154, 0.1);
+            color: var(--brand-purple);
+            font-weight: 600;
+            font-size: 0.95rem;
+            opacity: 0;
+            transform: translateY(16px);
+            animation: fadeUp 0.8s ease-out forwards;
+            animation-delay: 0.42s;
+        }
+
+        footer {
+            text-align: center;
+            padding: 36px 0 0;
+            color: var(--muted-text);
+            border-top: 1px solid rgba(90, 24, 154, 0.08);
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(24px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 720px) {
+            .hero {
+                padding-top: 72px;
+            }
+
+            .hero h1 {
+                font-size: 2.4rem;
+            }
+
+            .tracker,
+            .impact-card,
+            .donation-cta {
+                padding: 28px;
+            }
+
+            .donation-cta {
+                padding: 50px 24px;
+            }
+
+            .btn-large {
+                width: 100%;
+                padding: 18px 0;
+            }
+        }
+    </style>
+  <link rel='stylesheet' href='mobile-fixes.css'>
+
+<body>
+
+    <nav class="navbar">
+        <div class="container nav-wrapper">
+            <a href="index.html" class="nav-logo">PREP STUDIOS</a>
+            <a href="index.html" class="nav-return"><i class="fas fa-chevron-left"></i> Back to studio</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="hero animate-up animate-delay-1">
+            <h1>Support <span>indie filmmaking</span> with Prep Studio.</h1>
+            <p>Help us keep the platform fast, private, and accessible. Your support pays for better servers, smarter AI, and a stronger free tier for creators everywhere.</p>
+        </header>
+
+        <div class="tracker animate-up animate-delay-2">
+            <div class="progress-meta">
+                <div>
+                    <div class="progress-label">Current campaign</div>
+                    <div class="progress-title">Platform stability & community access</div>
+                </div>
+                <div class="progress-percent">30%</div>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            <p>Every gift helps us expand infrastructure, reduce load times, support AI improvements, and ensure the tools remain available to indie filmmakers without compromise.</p>
+        </div>
+
+        <section class="impact-grid animate-up animate-delay-3">
+            <div class="impact-card animate-delay-1">
+                <div class="icon-circle"><i class="fas fa-bolt"></i></div>
+                <h3>Reliability for creators</h3>
+                <p>Stronger infrastructure means faster page loads, safer backups, and a smoother experience when it matters most on set.</p>
+            </div>
+            <div class="impact-card animate-delay-2">
+                <div class="icon-circle"><i class="fas fa-hands-helping"></i></div>
+                <h3>Accessible tools</h3>
+                <p>Your support helps us offer a generous free tier so students, indie filmmakers, and emerging studios get the same powerful workflow tools.</p>
+            </div>
+            <div class="impact-card animate-delay-3">
+                <div class="icon-circle"><i class="fas fa-shield-alt"></i></div>
+                <h3>Privacy without compromise</h3>
+                <p>We continue building without ad-based revenue or data sales, keeping your story safe and the product independent.</p>
+            </div>
+        </section>
+
+        <section class="donation-cta animate-up animate-delay-4">
+            <div>
+                <h2>Make a meaningful contribution.</h2>
+                <p>Choose the amount that fits your budget and help us keep Prep Studio creative, reliable, and independent for the entire filmmaking community.</p>
+                <a href="https://paystack.shop/pay/7xskwvnvwo" class="btn-large" target="_blank" rel="noopener">Support with Any Amount</a>
+                <div class="payment-icons">
+                    <i class="fab fa-cc-visa"></i>
+                    <i class="fab fa-cc-mastercard"></i>
+                    <i class="fab fa-cc-apple-pay"></i>
+                </div>
+                <p class="small-note">Secure checkout via Paystack. Nigerian and international cards accepted.</p>
+            </div>
+        </section>
+
+        <section class="why-support animate-up animate-delay-4">
+            <h2>Why your support moves Prep Studio forward</h2>
+            <div class="why-grid">
+                <div class="why-card animate-delay-1">
+                    <span class="why-icon">⚡</span>
+                    <h3>Faster, more reliable performance</h3>
+                    <p>Help us invest in server upgrades and scaling so Prep Studio stays fast for every filmmaker.</p>
+                </div>
+                <div class="why-card animate-delay-2">
+                    <span class="why-icon">🎓</span>
+                    <h3>More free access</h3>
+                    <p>Your support keeps a generous free tier available for students, indie creators, and emerging teams.</p>
+                </div>
+                <div class="why-card animate-delay-3">
+                    <span class="why-icon">🔒</span>
+                    <h3>Privacy-first growth</h3>
+                    <p>We can keep building without ads or data sales, so your scripts stay private and independent.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="community-section animate-up animate-delay-5">
+            <h2>Trusted by Content Creators</h2>
+            <p>Join leading creators and media brands who trust Prep Studio for their production workflows.</p>
+            <div class="donor-logos">
+                <div class="logo-item">
+                    <img src="/assets/epi.logo.ng.png" alt="shot.it Media">
+                </div>
+                <div class="logo-item">
+                    <img src="/assets/wiselen.logo.png" alt="Wise Lions">
+                </div>
+            </div>
+        </section>
+
+        <footer class="animate-up animate-delay-5">
+            <p>&copy; 2026 Prep Studio. Built for filmmakers, by filmmakers.</p>
+        </footer>
+    </div>
+
+</body>
+</html>
+
+
+

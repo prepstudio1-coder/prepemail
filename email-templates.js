@@ -197,7 +197,7 @@ const PLAN_FEATURES = {
 /**
  * @param {string} fullName
  * @param {'pro'|'studio'} plan
- * @param {number|string} amount  - raw numeric amount from Flutterwave (e.g. 8 or 96)
+ * @param {number|string} amount  - numeric amount (already in display units, e.g. 1000 for ₦1,000)
  * @param {string} [currency]     - ISO currency code, e.g. 'USD' or 'NGN'
  * @param {string} [billingCycle] - 'monthly' | 'yearly' (optional, inferred from amount if omitted)
  * @returns {string} HTML
